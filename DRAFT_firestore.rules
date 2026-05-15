@@ -1,0 +1,92 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function hasRole(role) {
+      return isSignedIn() && getUserData().role == role;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && (getUserData().role in ['SuperMaster', 'MasterAdmin', 'Admin']);
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email', 'status', 'role']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 255 &&
+             data.email is string && data.email.size() > 0 &&
+             data.status in ['Pending', 'Active', 'Suspended'] &&
+             data.role in ['SuperMaster', 'MasterAdmin', 'Admin', 'Employee'];
+    }
+
+    // --- Routes ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      
+      allow create: if isSignedIn() && isOwner(userId) && 
+                      request.resource.data.status == 'Pending' &&
+                      request.resource.data.role == 'Employee' &&
+                      isValidUser(request.resource.data);
+                      
+      allow update: if isSignedIn() && (
+        // Admin can update status/role/jabatan/etc
+        (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'role', 'jabatan', 'golongan', 'nipp', 'contractExpiry'])) ||
+        // User can update basic profile or deviceId (binding)
+        (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'dob', 'deviceId', 'faceEnrollment']))
+      );
+    }
+
+    match /attendance/{atId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow create: if isSignedIn() && 
+                      request.resource.data.userId == request.auth.uid &&
+                      getUserData().status == 'Active';
+                      
+      allow update: if isAdmin();
+    }
+
+    match /requests/{reqId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
+    }
+
+    match /payroll/{payId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if hasRole('SuperMaster') || hasRole('MasterAdmin');
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if hasRole('SuperMaster');
+      allow create: if isAdmin();
+    }
+  }
+}

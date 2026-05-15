@@ -1,0 +1,9 @@
+{
+  "name": "Absensi PUD Pasar",
+  "description": "Sistem informasi absensi dan manajemen SDM terintegrasi dengan deteksi wajah, geofencing dinamis, dan sistem payroll otomatis.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}

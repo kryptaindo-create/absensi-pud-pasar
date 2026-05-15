@@ -1,0 +1,315 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores core user information, HR details, and security flags.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "nipp": { "type": "string" },
+        "pob": { "type": "string", "description": "Tempat Lahir" },
+        "dob": { "type": "string", "format": "date" },
+        "gender": { "type": "string", "enum": ["Laki-laki", "Perempuan"] },
+        "address": { "type": "string" },
+        "religion": { "type": "string" },
+        "jabatan": { "type": "string" },
+        "golongan": { "type": "string" },
+        "tempatTugas": { "type": "string" },
+        "attendanceLocations": { 
+          "type": "array", 
+          "items": { "type": "string" },
+          "description": "Allowed GPS locations for attendance"
+        },
+        "nomorGaji": { "type": "string" },
+        "statusPegawai": { "type": "string" },
+        "statusPerkawinan": { "type": "string" },
+        "sisaCuti": { "type": "number" },
+        "tanggalMasuk": { "type": "string", "format": "date" },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "level": { "type": "number" },
+              "cause": { "type": "string" },
+              "date": { "type": "string", "format": "date" }
+            }
+          }
+        },
+        "sp": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "level": { "type": "number" },
+              "cause": { "type": "string" },
+              "date": { "type": "string", "format": "date" }
+            }
+          }
+        },
+        "skPengangkatan": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "number": { "type": "string" },
+              "date": { "type": "string", "format": "date" }
+            }
+          }
+        },
+        "family": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "relation": { "type": "string", "enum": ["Suami", "Istri", "Anak"] },
+              "name": { "type": "string" },
+              "dob": { "type": "string", "format": "date" }
+            }
+          }
+        },
+        "contract": {
+          "type": "object",
+          "properties": {
+            "start": { "type": "string", "format": "date" },
+            "end": { "type": "string", "format": "date" }
+          }
+        },
+        "role": { "type": "string", "enum": ["SuperMaster", "MasterAdmin", "Admin", "Employee"] },
+        "status": { "type": "string", "enum": ["Pending", "Active", "Suspended"] },
+        "deviceId": { "type": "string" },
+        "faceEnrollment": {
+          "type": "object",
+          "properties": {
+            "front": { "type": "string" },
+            "left": { "type": "string" },
+            "right": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Attendance": {
+      "title": "Attendance Record",
+      "description": "Daily check-in and check-out logs with face verification and GPS data.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "checkIn": {
+          "type": "object",
+          "properties": {
+            "time": { "type": "string", "format": "date-time" },
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "photoUrl": { "type": "string" },
+            "verified": { "type": "boolean" },
+            "type": { "type": "string", "enum": ["Assembly", "Regular"] }
+          }
+        },
+        "checkOut": {
+          "type": "object",
+          "properties": {
+            "time": { "type": "string", "format": "date-time" },
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "photoUrl": { "type": "string" },
+            "verified": { "type": "boolean" }
+          }
+        },
+        "status": { "type": "string", "enum": ["Present", "Late", "Absent", "Leave", "Sick"] }
+      }
+    },
+    "Request": {
+      "title": "HR Request",
+      "description": "Leave, sick, or promotion requests.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["Leave", "Sick", "EarlyLeave", "Promotion"] },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "reason": { "type": "string" },
+        "attachmentUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Rejected"] },
+        "reviewedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Payroll": {
+      "title": "Payroll Record",
+      "description": "Monthly salary details including allowances and deductions.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "periodStart": { "type": "string", "format": "date" },
+        "periodEnd": { "type": "string", "format": "date" },
+        "nipp": { "type": "string" },
+        "golongan": { "type": "string" },
+        "nomorGaji": { "type": "string" },
+        "baseSalary": { "type": "number" },
+        "allowances": { 
+          "type": "object",
+          "properties": {
+            "istri": { "type": "number" },
+            "anak": { "type": "number" },
+            "jabatan": { "type": "number" },
+            "khusus": { "type": "number" },
+            "kerajinan": { "type": "number" },
+            "transport": { "type": "number" },
+            "makan": { "type": "number" },
+            "jamsostekCompany": { "type": "number" },
+            "pensiunCompany": { "type": "number" }
+          }
+        },
+        "deductions": { 
+          "type": "object",
+          "properties": {
+            "pph": { "type": "number" },
+            "jamsostekEmployee": { "type": "number" },
+            "pensiunEmployee": { "type": "number" },
+            "dendaKerajinan": { "type": "number" },
+            "dendaMangkir": { "type": "number" },
+            "cuti": { "type": "number" },
+            "izinSakit": { "type": "number" },
+            "arisan": { "type": "number" },
+            "koperasi": { "type": "number" },
+            "spWajib": { "type": "number" },
+            "infak": { "type": "number" }
+          }
+        },
+        "totalAllowances": { "type": "number" },
+        "totalDeductions": { "type": "number" },
+        "netSalary": { "type": "number" },
+        "isPaid": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "SPT": {
+      "title": "Surat Perintah Tugas",
+      "description": "Travel/Assignment orders for employees.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "sptNumber": { "type": "string" },
+        "shiftId": { "type": "string" },
+        "locations": { "type": "array", "items": { "type": "string" } },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "attachmentUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Announcement": {
+      "title": "System Announcement",
+      "description": "Broadcast or targeted messages.",
+      "type": "object",
+      "properties": {
+        "targetType": { "type": "string", "enum": ["ALL", "SINGLE"] },
+        "targetUserId": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "senderId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "FraudLog": {
+      "title": "Fraud Detection Log",
+      "description": "Records suspicious activities like fake GPS or root detection.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["ROOTED", "GEOFENCE_BYPASS", "FACE_MISMATCH", "MOCK_GPS"] },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Shift": {
+      "title": "Work Shift",
+      "description": "Defines working hours.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "startTime": { "type": "string", "description": "e.g. 08:00" },
+        "endTime": { "type": "string", "description": "e.g. 17:00" },
+        "toleranceMinutes": { "type": "number" }
+      }
+    },
+    "OfficeLocation": {
+      "title": "Office Geofence",
+      "description": "Defined boundary for allowed attendance.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "centerLat": { "type": "number" },
+        "centerLng": { "type": "number" },
+        "radius": { "type": "number", "description": "Radius in meters" },
+        "polygon": { 
+          "type": "array", 
+          "items": { 
+            "type": "object", 
+            "properties": { "lat": { "type": "number" }, "lng": { "type": "number" } } 
+          } 
+        }
+      }
+    },
+    "AuditLog": {
+      "title": "Audit Log",
+      "description": "Records all critical admin actions.",
+      "type": "object",
+      "properties": {
+        "adminId": { "type": "string" },
+        "action": { "type": "string" },
+        "targetId": { "type": "string" },
+        "changes": { "type": "object" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Individual user profiles."
+    },
+    "attendance/{recordId}": {
+      "schema": "Attendance",
+      "description": "Attendance logs."
+    },
+    "requests/{requestId}": {
+      "schema": "Request",
+      "description": "Leave and other requests."
+    },
+    "payroll/{payrollId}": {
+      "schema": "Payroll",
+      "description": "Salary slips."
+    },
+    "audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "System audit trail."
+    },
+    "spts/{sptId}": {
+      "schema": "SPT",
+      "description": "Assignment orders."
+    },
+    "announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "System messages."
+    },
+    "fraudLogs/{logId}": {
+      "schema": "FraudLog",
+      "description": "Fraud records."
+    },
+    "shifts/{shiftId}": {
+      "schema": "Shift",
+      "description": "Shift definitions."
+    },
+    "locations/{locId}": {
+      "schema": "OfficeLocation",
+      "description": "Geofence definitions."
+    }
+  }
+}

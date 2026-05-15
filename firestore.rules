@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- Global Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isEmailVerified() { return request.auth.token.email_verified == true; }
+    function getUserData() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function userExists() { return exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function isSuperMaster() { return isSignedIn() && userExists() && getUserData().role == 'SuperMaster'; }
+    function isMasterAdmin() { return isSignedIn() && userExists() && (getUserData().role == 'MasterAdmin' || isSuperMaster()); }
+    function isAdmin() { 
+      return isSignedIn() && (
+        request.auth.token.email == 'kryptaindo@gmail.com' ||
+        (userExists() && getUserData().role in ['Admin', 'MasterAdmin', 'SuperMaster'])
+      ); 
+    }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+
+    // --- Validation Helpers ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email', 'status', 'role']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.email is string &&
+             data.status in ['Pending', 'Active', 'Suspended'] &&
+             data.role in ['SuperMaster', 'MasterAdmin', 'Admin', 'Employee'];
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && (
+        (isOwner(userId) && request.resource.data.status == 'Pending' && isValidUser(request.resource.data)) ||
+        isAdmin()
+      );
+      allow update: if isSignedIn() && (
+        isSuperMaster() ||
+        (isMasterAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'status', 'role', 'jabatan', 'golongan', 'nipp', 'pob', 'dob', 'gender', 
+          'address', 'religion', 'tempatTugas', 'attendanceLocations', 'nomorGaji', 
+          'statusPegawai', 'statusPerkawinan', 'sisaCuti', 'tanggalMasuk', 
+          'warnings', 'sp', 'skPengangkatan', 'family', 'contract'
+        ])) ||
+        (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'pob', 'dob', 'gender', 'address', 'religion', 'tempatTugas', 'nomorGaji', 
+          'statusPegawai', 'statusPerkawinan', 'sisaCuti', 'tanggalMasuk', 'family'
+        ])) ||
+        (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'deviceId', 'faceEnrollment'
+        ]))
+      );
+      allow delete: if isSuperMaster();
+    }
+
+    match /attendance/{atId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && getUserData().status == 'Active';
+      allow update: if isAdmin();
+    }
+
+    match /requests/{reqId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isMasterAdmin();
+    }
+
+    match /payroll/{payId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isMasterAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isSuperMaster();
+      allow create: if isAdmin();
+      allow update, delete: if isSuperMaster();
+    }
+
+    match /spts/{sptId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /announcements/{annId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /fraudLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /shifts/{shiftId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /locations/{locId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
