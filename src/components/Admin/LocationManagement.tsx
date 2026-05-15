@@ -4,10 +4,20 @@ import {
   ShieldCheck, ShieldAlert, Layers, Map as MapIcon,
   Crosshair, Save, X, Info
 } from 'lucide-react';
-import { APIProvider, Map, Polygon, AdvancedMarker } from '@vis.gl/react-google-maps';
+import { MapContainer, TileLayer, Marker, Popup, Polygon as LeafletPolygon, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
 import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
+import 'leaflet/dist/leaflet.css';
+
+// Fix default marker icon
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-shadow.png',
+});
 
 export function LocationManagement() {
   const [locations, setLocations] = useState<any[]>([]);
@@ -23,9 +33,6 @@ export function LocationManagement() {
     points: [{ lat: '', lng: '' }]
   });
 
-  const API_KEY = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
-  const hasMapKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
-
   const mapCenter = (() => {
     const validPoint = (formData.points || []).find((p: any) => p.lat !== '' && p.lng !== '');
     if (validPoint) {
@@ -38,13 +45,18 @@ export function LocationManagement() {
     .filter((p: any) => p.lat !== '' && p.lng !== '')
     .map((p: any) => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }));
 
-  const handleMapClick = (event: any) => {
-    const latLng = event?.detail?.latLng;
-    if (!latLng) return;
-    setFormData({
-      ...formData,
-      points: [...(formData.points || []), { lat: latLng.lat.toFixed(6), lng: latLng.lng.toFixed(6) }]
+  // Map Click Handler Component
+  const MapClickHandler = ({ formData, setFormData }: any) => {
+    useMapEvents({
+      click: (e) => {
+        const { lat, lng } = e.latlng;
+        setFormData({
+          ...formData,
+          points: [...(formData.points || []), { lat: lat.toFixed(6), lng: lng.toFixed(6) }]
+        });
+      },
     });
+    return null;
   };
 
   useEffect(() => {
@@ -287,36 +299,55 @@ export function LocationManagement() {
                         </div>
                         {hasMapKey ? (
                           <div className="h-72 rounded-[2rem] overflow-hidden border border-slate-200">
-                            <APIProvider apiKey={API_KEY} version="weekly" libraries={["geometry"]}>
-                              <Map
-                                defaultCenter={mapCenter}
-                                defaultZoom={17}
-                                style={{ width: '100%', height: '100%' }}
-                                onClick={handleMapClick}
-                              >
-                                {polygonPath.length >= 3 && (
-                                  <Polygon
-                                    paths={polygonPath}
-                                    editable={false}
-                                    fillColor="#2563eb"
-                                    fillOpacity={0.18}
-                                    strokeColor="#2563eb"
-                                    strokeWeight={3}
-                                  />
-                                )}
-                                {polygonPath.map((point: any, index: number) => (
-                                  <AdvancedMarker key={`point-${index}`} position={point}>
-                                    <div className="rounded-full bg-white border border-slate-200 px-2 py-1 text-[10px] font-black text-slate-700">
-                                      {index + 1}
+                            <MapContainer 
+                              center={[mapCenter.lat, mapCenter.lng]}
+                              zoom={17}
+                              style={{ width: '100%', height: '100%' }}
+                              className="leaflet-container"
+                            >
+                              <TileLayer
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                              />
+                              
+                              {/* Polygon dari points */}
+                              {polygonPath.length >= 3 && (
+                                <LeafletPolygon 
+                                  positions={polygonPath.map((p: any) => [p.lat, p.lng])}
+                                  color="#2563eb"
+                                  fillColor="#2563eb"
+                                  fillOpacity={0.18}
+                                  weight={3}
+                                />
+                              )}
+                              
+                              {/* Markers untuk setiap point */}
+                              {polygonPath.map((point: any, index: number) => (
+                                <Marker
+                                  key={`point-${index}`}
+                                  position={[point.lat, point.lng]}
+                                  icon={L.icon({
+                                    iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCAzMiA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iNDgiIHJ4PSI4IiBmaWxsPSIjMjU2M2ViIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPnt7aW5kZXh9fTwvdGV4dD48L3N2Zz4='.replace('{{index}}', (index+1).toString()),
+                                    iconSize: [32, 48],
+                                    iconAnchor: [16, 48],
+                                    popupAnchor: [0, -48]
+                                  })}
+                                >
+                                  <Popup>
+                                    <div className="text-xs">
+                                      <p className="font-bold">Titik {index + 1}</p>
+                                      <p className="text-[10px] text-slate-500">{point.lat.toFixed(6)}, {point.lng.toFixed(6)}</p>
                                     </div>
-                                  </AdvancedMarker>
-                                ))}
-                              </Map>
-                            </APIProvider>
+                                  </Popup>
+                                </Marker>
+                              ))}
+                              
+                              <MapClickHandler formData={formData} setFormData={setFormData} />
+                            </MapContainer>
                           </div>
                         ) : (
                           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                            Untuk menggunakan fitur klik peta, silakan atur <strong>GOOGLE_MAPS_PLATFORM_KEY</strong> di environment Anda.
+                            Map tidak tersedia. Pastikan browser Anda support Leaflet.
                           </div>
                         )}
 
