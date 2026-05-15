@@ -1,12 +1,19 @@
-import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { MapPin, Navigation, User, Signal, History, Info, ChevronRight, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import 'leaflet/dist/leaflet.css';
 
-const API_KEY = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
-const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
+// Fix default marker icon
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-shadow.png',
+});
 
 export function LiveTracking() {
   const [users, setUsers] = useState<any[]>([]);
@@ -19,38 +26,6 @@ export function LiveTracking() {
     return unsub;
   }, []);
 
-  if (!hasValidKey) {
-    return (
-      <div className="bg-white rounded-[2rem] p-12 text-center border border-slate-200 shadow-sm max-w-2xl mx-auto mt-10">
-        <div className="h-16 w-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-           <MapPin className="h-8 w-8" />
-        </div>
-        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Google Maps API Key Required</h2>
-        <p className="text-sm text-slate-500 mt-4 leading-relaxed font-bold">
-          Untuk menggunakan fitur Lacak Lokasi Real-Time, Anda perlu mengkonfigurasi Google Maps Platform API Key.
-        </p>
-        
-        <div className="mt-10 space-y-4 text-left">
-           <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-2">Langkah Konfigurasi:</p>
-           <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
-              <div className="flex gap-4">
-                 <div className="h-6 w-6 rounded-lg bg-blue-600 text-white flex items-center justify-center text-[10px] font-black shrink-0">1</div>
-                 <p className="text-[11px] font-bold text-slate-700">Dapatkan API Key dari <a href="https://console.cloud.google.com/google/maps-apis/start?utm_campaign=gmp-code-assist-ais" target="_blank" className="text-blue-600 underline">Google Cloud Console</a>.</p>
-              </div>
-              <div className="flex gap-4">
-                 <div className="h-6 w-6 rounded-lg bg-blue-600 text-white flex items-center justify-center text-[10px] font-black shrink-0">2</div>
-                 <p className="text-[11px] font-bold text-slate-700">Buka <strong>Settings</strong> (ikon ⚙️ di pojok kanan atas).</p>
-              </div>
-              <div className="flex gap-4">
-                 <div className="h-6 w-6 rounded-lg bg-blue-600 text-white flex items-center justify-center text-[10px] font-black shrink-0">3</div>
-                 <p className="text-[11px] font-bold text-slate-700">Pilih <strong>Secrets</strong>, tambah <code>GOOGLE_MAPS_PLATFORM_KEY</code> dan simpan API Key Anda.</p>
-              </div>
-           </div>
-        </div>
-      </div>
-    );
-  }
-
   // Demo locations if not present in DB
   const employeeLocations = users.map(u => ({
     ...u,
@@ -62,31 +37,41 @@ export function LiveTracking() {
     <div className="h-[calc(100vh-140px)] flex gap-8">
        {/* Left side: Map Area */}
        <div className="flex-1 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden relative group">
-          <APIProvider apiKey={API_KEY} version="weekly">
-            <Map
-              defaultCenter={{ lat: 3.5952, lng: 98.6722 }}
-              defaultZoom={14}
-              mapId="PUD_PASAR_TRACKING"
-              internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-              style={{ width: '100%', height: '100%' }}
-            >
-               {employeeLocations.map(u => (
-                 <AdvancedMarker 
-                   key={u.id} 
-                   position={{ lat: u.lat, lng: u.lng }}
-                   onClick={() => setSelectedUser(u)}
-                 >
-                    <div className={`p-1 rounded-full transition-all ${selectedUser?.id === u.id ? 'scale-125' : 'hover:scale-110'}`}>
-                       <Pin 
-                        background={u.outsideGeofence ? "#ef4444" : "#2563eb"} 
-                        glyphColor="#fff" 
-                        borderColor="#fff"
-                       />
-                    </div>
-                 </AdvancedMarker>
-               ))}
-            </Map>
-          </APIProvider>
+          <MapContainer 
+            center={[3.5952, 98.6722]} 
+            zoom={14} 
+            style={{ width: '100%', height: '100%' }}
+            className="leaflet-container"
+          >
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            />
+            {employeeLocations.map(u => (
+              <Marker
+                key={u.id}
+                position={[u.lat, u.lng]}
+                icon={L.icon({
+                  iconUrl: u.outsideGeofence 
+                    ? 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCAzMiA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iNDgiIHJ4PSI4IiBmaWxsPSIjZWY0NDQ0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkk8L3RleHQ+PC9zdmc+'
+                    : 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCAzMiA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iNDgiIHJ4PSI4IiBmaWxsPSIjMjU2M2ViIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkk8L3RleHQ+PC9zdmc+',
+                  iconSize: [32, 48],
+                  iconAnchor: [16, 48],
+                  popupAnchor: [0, -48]
+                })}
+              >
+                <Popup>
+                  <div className="text-xs font-bold">
+                    <p className="text-slate-900">{u.name}</p>
+                    <p className="text-slate-500 text-[10px]">{u.jabatan}</p>
+                    <p className={`text-[10px] font-bold mt-1 ${u.outsideGeofence ? 'text-red-600' : 'text-green-600'}`}>
+                      {u.outsideGeofence ? 'Outside Geofence' : 'In Area'}
+                    </p>
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+          </MapContainer>
 
           {/* Map Overlay Stats */}
           <div className="absolute top-6 left-6 p-4 rounded-2xl bg-white/90 backdrop-blur-md border border-slate-200 shadow-xl flex items-center gap-4">
