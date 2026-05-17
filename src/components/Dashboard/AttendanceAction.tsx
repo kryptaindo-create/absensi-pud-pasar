@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, MapPin, CheckCircle2, RefreshCcw, Navigation, AlertCircle } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { addDoc, collection, getDocs, getDoc, doc, serverTimestamp } from 'firebase/firestore';
+import * as faceapi from '@vladmandic/face-api';
 
 // Cek apakah titik (lat, lng) berada di dalam polygon menggunakan ray-casting
 function isPointInPolygon(lat: number, lng: number, polygon: { lat: number; lng: number }[]): boolean {
@@ -38,6 +39,8 @@ export function AttendanceAction({ profile }: { profile: any }) {
   const [geoError, setGeoError] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [cameraError, setCameraError] = useState<string>('');
+  const [faceError, setFaceError] = useState<string>('');
+  const [isModelLoaded, setIsModelLoaded] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -119,77 +122,124 @@ export function AttendanceAction({ profile }: { profile: any }) {
   }, []);
 
   const handleProcess = async () => {
+    if (!videoRef.current || !profile.faceDescriptor || !isModelLoaded) return;
+    
     setLoading(true);
-    // Simulate Face Recognition delay
-    setTimeout(async () => {
-      try {
-        let finalStatus = 'HADIR'; // Default
-        
-        // 1. Ambil detail shift karyawan (jika ada)
-        if (profile.shiftId) {
-          try {
-            const shiftDoc = await getDoc(doc(db, 'shifts', profile.shiftId));
-            if (shiftDoc.exists()) {
-              const shiftData = shiftDoc.data();
-              const startTime = shiftData.startTime || '08:00';
-              const tolerance = parseInt(shiftData.lateTolerance || '15');
-              
-              // Hitung waktu saat ini dalam menit (sejak tengah malam)
-              const now = new Date();
-              const currentMinutes = now.getHours() * 60 + now.getMinutes();
-              
-              // Hitung batas waktu masuk dalam menit
-              const [startHour, startMin] = startTime.split(':').map(Number);
-              const allowedMinutes = (startHour * 60) + startMin + tolerance;
-              
-              if (currentMinutes > allowedMinutes) {
-                finalStatus = 'LATE';
-              }
-            }
-          } catch (shiftErr) {
-            console.error("Gagal mengambil data shift:", shiftErr);
-          }
-        } else {
-          // Jika tidak ada shiftId, gunakan default 08:15 (08:00 + 15 menit)
-          const now = new Date();
-          const currentMinutes = now.getHours() * 60 + now.getMinutes();
-          const defaultAllowedMinutes = (8 * 60) + 15; // 08:15
-          if (currentMinutes > defaultAllowedMinutes) {
-            finalStatus = 'LATE';
-          }
-        }
+    setFaceError('');
+    
+    try {
+      // Deteksi wajah saat ini
+      const detection = await faceapi.detectSingleFace(videoRef.current)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
 
-        await addDoc(collection(db, 'attendance'), {
-          userId: profile.uid,
-          date: new Date().toISOString().split('T')[0],
-          checkIn: {
-            time: serverTimestamp(),
-            lat: location?.lat || 0,
-            lng: location?.lng || 0,
-            verified: true,
-            type: 'Regular'
-          },
-          status: finalStatus
-        });
-        
-        // Stop camera stream
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-        }
-        
-        setStep('success');
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, 'attendance');
-      } finally {
+      if (!detection) {
+        setFaceError("Wajah tidak terdeteksi. Pastikan pencahayaan cukup dan wajah terlihat jelas.");
         setLoading(false);
+        return;
       }
-    }, 2000);
+
+      // Cocokkan dengan wajah di database (profile.faceDescriptor)
+      const savedDescriptor = new Float32Array(profile.faceDescriptor);
+      const distance = faceapi.euclideanDistance(detection.descriptor, savedDescriptor);
+      
+      // Threshold biasanya 0.45 - 0.5 (semakin kecil semakin ketat)
+      if (distance > 0.45) {
+        setFaceError("Wajah tidak cocok! Sistem menolak presensi ini.");
+        setLoading(false);
+        return;
+      }
+
+      // JIKA WAJAH COCOK, LANJUTKAN PROSES ABSEN
+      let finalStatus = 'HADIR'; // Default
+      
+      // 1. Ambil detail shift karyawan (jika ada)
+      if (profile.shiftId) {
+        try {
+          const shiftDoc = await getDoc(doc(db, 'shifts', profile.shiftId));
+          if (shiftDoc.exists()) {
+            const shiftData = shiftDoc.data();
+            const startTime = shiftData.startTime || '08:00';
+            const tolerance = parseInt(shiftData.lateTolerance || '15');
+            
+            // Hitung waktu saat ini dalam menit (sejak tengah malam)
+            const now = new Date();
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            
+            // Hitung batas waktu masuk dalam menit
+            const [startHour, startMin] = startTime.split(':').map(Number);
+            const allowedMinutes = (startHour * 60) + startMin + tolerance;
+            
+            if (currentMinutes > allowedMinutes) {
+              finalStatus = 'LATE';
+            }
+          }
+        } catch (shiftErr) {
+          console.error("Gagal mengambil data shift:", shiftErr);
+        }
+      } else {
+        // Jika tidak ada shiftId, gunakan default 08:15 (08:00 + 15 menit)
+        const now = new Date();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const defaultAllowedMinutes = (8 * 60) + 15; // 08:15
+        if (currentMinutes > defaultAllowedMinutes) {
+          finalStatus = 'LATE';
+        }
+      }
+
+      await addDoc(collection(db, 'attendance'), {
+        userId: profile.uid || profile.id,
+        date: new Date().toISOString().split('T')[0],
+        checkIn: {
+          time: serverTimestamp(),
+          lat: location?.lat || 0,
+          lng: location?.lng || 0,
+          verified: true,
+          type: 'Regular'
+        },
+        status: finalStatus
+      });
+      
+      // Stop camera stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      
+      setStep('success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'attendance');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Start camera when entering verification step
   useEffect(() => {
     if (step === 'verification') {
-      startCamera();
+      if (!profile.faceDescriptor) {
+        setCameraError('Wajah Anda belum terdaftar. Silakan daftarkan wajah di menu Profil terlebih dahulu.');
+        return;
+      }
+
+      const loadModelsAndCamera = async () => {
+        try {
+          if (!isModelLoaded) {
+            const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+            await Promise.all([
+              faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+              faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+              faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+            ]);
+            setIsModelLoaded(true);
+          }
+          await startCamera();
+        } catch (err) {
+          console.error("Gagal memuat AI:", err);
+          setCameraError("Gagal memuat mesin AI. Pastikan internet Anda stabil.");
+        }
+      };
+      
+      loadModelsAndCamera();
     }
     return () => {
       // Cleanup camera on unmount
@@ -361,18 +411,29 @@ export function AttendanceAction({ profile }: { profile: any }) {
             </div>
 
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">Memverifikasi Wajah</h3>
+              <h3 className="text-lg font-semibold text-slate-900">
+                {isModelLoaded ? 'AI Face Recognition' : 'Memuat Mesin AI...'}
+              </h3>
               <p className="mt-2 text-xs text-slate-500 font-medium max-w-[200px] mx-auto leading-relaxed">
-                Posisikan wajah Anda tepat di tengah layar
+                Posisikan wajah Anda tepat di tengah layar.
               </p>
+              {faceError && (
+                <p className="mt-2 text-xs text-red-600 font-bold bg-red-50 p-2 rounded-lg border border-red-100">
+                  {faceError}
+                </p>
+              )}
             </div>
             
             <button 
               onClick={handleProcess}
-              disabled={!!cameraError}
+              disabled={!!cameraError || !isModelLoaded || loading}
               className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-xs font-bold text-white hover:bg-blue-700 transition-all uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
             >
-              <Camera className="h-4 w-4" /> Capture & Absen
+              {loading ? (
+                <>Menganalisis...</>
+              ) : (
+                <><Camera className="h-4 w-4" /> Scan Biometrik</>
+              )}
             </button>
           </motion.div>
         )}

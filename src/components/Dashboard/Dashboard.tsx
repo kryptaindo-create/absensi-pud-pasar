@@ -6,6 +6,7 @@ import { Overview } from './Overview';
 import { AttendanceAction } from './AttendanceAction';
 import { History } from './History';
 import { Payslip } from './Payslip';
+import { FaceEnrollment } from './FaceEnrollment';
 
 export function Dashboard({ profile }: { profile: any }) {
   const [activeTab, setActiveTab] = useState('home');
@@ -112,6 +113,8 @@ export function Dashboard({ profile }: { profile: any }) {
 }
 
 function ProfileView({ profile }: { profile: any }) {
+  const [showFaceEnrollment, setShowFaceEnrollment] = useState(false);
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
       <div className="theme-card p-6 bg-white">
@@ -140,6 +143,33 @@ function ProfileView({ profile }: { profile: any }) {
             </span>
           </div>
         </div>
+        </div>
+      </div>
+
+      <div className="theme-card p-6 bg-white border border-blue-100">
+        <h4 className="text-sm font-bold text-slate-900 mb-2 uppercase tracking-wide flex items-center gap-2">
+          Kunci Biometrik Wajah
+          {profile.faceDescriptor ? (
+            <span className="px-2 py-0.5 rounded bg-green-100 text-green-700 text-[9px]">AKTIF</span>
+          ) : (
+            <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-[9px]">BELUM ADA</span>
+          )}
+        </h4>
+        <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+          {profile.faceDescriptor 
+            ? "Wajah Anda telah berhasil didaftarkan dan dikunci di sistem untuk keperluan presensi."
+            : "Anda diwajibkan mendaftarkan wajah Anda agar dapat melakukan absen. Klik tombol di bawah ini untuk memulai pemindaian."}
+        </p>
+        <button 
+          onClick={() => setShowFaceEnrollment(true)}
+          className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+            profile.faceDescriptor 
+              ? 'bg-slate-100 text-slate-500 hover:bg-slate-200' 
+              : 'bg-blue-600 text-white shadow-lg shadow-blue-200 hover:bg-blue-700'
+          }`}
+        >
+          {profile.faceDescriptor ? 'Perbarui Wajah' : 'Daftarkan Wajah'}
+        </button>
       </div>
 
       <div className="rounded-xl bg-red-50/50 p-6 border border-red-100/60">
@@ -148,6 +178,13 @@ function ProfileView({ profile }: { profile: any }) {
           Jika ada kesalahan data atau ingin mengubah perangkat, silakan hubungi Bagian Kepegawaian Sekretariat.
         </p>
       </div>
+
+      {showFaceEnrollment && (
+        <FaceEnrollment 
+          profile={profile} 
+          onClose={() => setShowFaceEnrollment(false)} 
+        />
+      )}
     </div>
   );
 }
