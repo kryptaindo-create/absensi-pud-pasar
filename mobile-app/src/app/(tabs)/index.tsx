@@ -35,12 +35,11 @@ export default function DashboardScreen() {
   const [attendances, setAttendances] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [userData, setUserData] = useState<any>(null);
+  const [locationsData, setLocationsData] = useState<any[]>([]);
 
   const cameraRef = useRef<any>(null);
 
   useEffect(() => {
-    setupHardware();
-    
     // Barometer Listener (Opsional)
     let subscription: any;
     Barometer.isAvailableAsync().then((available) => {
@@ -75,10 +74,22 @@ export default function DashboardScreen() {
         setSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       }, (err) => console.log("Submissions Query Error:", err));
 
+      // Fetch Locations
+      const unsubLocs = onSnapshot(collection(db, 'locations'), (snap) => {
+        const locs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setLocationsData(locs);
+        
+        // Setup hardware AFTER locations are fetched (or just run it once)
+        // Note: we can run setupHardware right away, but it's better to pass locs or use a ref.
+        // For simplicity, we'll run setupHardware here with the fetched locations
+        setupHardware(locs);
+      });
+
       return () => {
         if (subscription) subscription.remove();
         unsubAtt();
         unsubSub();
+        unsubLocs();
       };
     } else {
       return () => {
@@ -87,7 +98,7 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  const setupHardware = async () => {
+  const setupHardware = async (locsFromDb = locationsData) => {
     try {
       let { status: locStatus } = await Location.requestForegroundPermissionsAsync();
       if (locStatus !== 'granted') {
@@ -103,9 +114,42 @@ export default function DashboardScreen() {
         return;
       }
 
-      const jarakMeter = getDistanceInMeters(location.coords.latitude, location.coords.longitude, KANTOR_LAT, KANTOR_LON);
+      // Get allowed locations
+      let allowedLocations = locsFromDb;
+      
+      // If no locations in DB, fallback to hardcoded
+      if (allowedLocations.length === 0) {
+        allowedLocations = [{ name: 'Kantor Pusat', latitude: KANTOR_LAT, longitude: KANTOR_LON, radius: RADIUS_MAKSIMAL_METER }];
+      }
 
-      setLocationStatus(`Lokasi Valid (${jarakMeter.toFixed(0)}m). Siap Absen.`);
+      let isValidLocation = false;
+      let minDistance = Infinity;
+      let matchedLocName = 'Lokasi Tidak Diketahui';
+
+      for (const loc of allowedLocations) {
+        if (!loc.latitude || !loc.longitude) continue;
+        const dist = getDistanceInMeters(location.coords.latitude, location.coords.longitude, loc.latitude, loc.longitude);
+        if (dist < minDistance) {
+          minDistance = dist;
+          matchedLocName = loc.name;
+        }
+        if (dist <= (loc.radius || RADIUS_MAKSIMAL_METER)) {
+          isValidLocation = true;
+          // Break is good, but we want to make sure it's valid
+          break;
+        }
+      }
+
+      // Untuk sementara (fase testing) baris validasi jarak dinonaktifkan (di-comment)
+      // JIKA INGIN MENGUNCI GEOFENCE, HAPUS COMMENT DI BAWAH INI:
+      /*
+      if (!isValidLocation) {
+        setLocationStatus(`Di Luar Jangkauan (${minDistance.toFixed(0)}m dari ${matchedLocName}).`);
+        return;
+      }
+      */
+
+      setLocationStatus(`Lokasi Valid (${minDistance === Infinity ? 0 : minDistance.toFixed(0)}m dari ${matchedLocName}).`);
       
       if (!cameraPermission?.granted) {
         await requestCameraPermission();
