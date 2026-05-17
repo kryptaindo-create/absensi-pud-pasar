@@ -174,6 +174,20 @@ export function AdminDashboard({ profile }: { profile: any }) {
                   </button>
                 ))}
               </nav>
+              
+              <div className="pt-6 mt-6 border-t border-slate-100">
+                <button 
+                  onClick={() => {
+                    localStorage.removeItem('demo_user');
+                    auth.signOut();
+                    window.location.reload();
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-4 text-[11px] font-black uppercase tracking-wider bg-red-50 text-red-600 hover:bg-red-100 transition-all"
+                >
+                  <X className="h-4 w-4" />
+                  Keluar dari Akun Admin
+                </button>
+              </div>
             </motion.aside>
           </>
         )}
