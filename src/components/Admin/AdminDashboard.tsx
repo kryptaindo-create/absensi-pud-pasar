@@ -12,6 +12,7 @@ import { AttendanceMonitoring } from './AttendanceMonitoring';
 import { HRISManagement } from './HRIS';
 import { PayrollManagement } from './PayrollAdmin';
 import { AuditLogView } from './AuditLog';
+import { ApprovalQueue } from './ApprovalQueue';
 import { AdminOverview } from './AdminOverview';
 import { SptManagement } from './SptManagement';
 import { FraudAnalysis } from './FraudAnalysis';
@@ -129,7 +130,7 @@ export function AdminDashboard({ profile }: { profile: any }) {
                 {activeTab === 'unit_stats' && <UnitStats />}
                 {activeTab === 'spt' && <SptManagement />}
                 {activeTab === 'fraud' && <FraudAnalysis />}
-                {activeTab === 'approvals' && <HRISManagement />}
+                {activeTab === 'approvals' && <ApprovalQueue profile={profile} />}
                 {activeTab === 'shifts' && <ShiftManagement />}
                 {activeTab === 'locations' && <LocationManagement />}
                 {activeTab === 'tracking' && <LiveTracking />}

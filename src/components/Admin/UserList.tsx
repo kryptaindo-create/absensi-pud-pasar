@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { Search, Plus, Edit2, Trash2, AlertTriangle } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, AlertTriangle, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserEditor } from './UserEditor';
 import { CreateEmployeeModal } from './CreateEmployeeModal';
@@ -44,6 +44,26 @@ export function UserList() {
       await updateDoc(doc(db, 'users', userId), { status });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+    }
+  };
+
+  const handleRequestReset = async (user: any) => {
+    if (confirm(`Ajukan reset kunci HP (Device Binding) untuk ${user.name}?`)) {
+      try {
+        await addDoc(collection(db, 'approval_queue'), {
+          requestedByAdmin: auth.currentUser?.uid,
+          requestedByName: auth.currentUser?.displayName || 'Admin',
+          targetUserId: user.id,
+          targetUserName: user.name,
+          actionType: 'RESET_DEVICE_BINDING',
+          status: 'PENDING',
+          timestamp: serverTimestamp()
+        });
+        alert('Pengajuan reset berhasil dikirim ke Antrian Persetujuan!');
+      } catch (err) {
+        console.error("Gagal mengirim request:", err);
+        alert('Gagal mengirim pengajuan.');
+      }
     }
   };
 
@@ -159,6 +179,13 @@ export function UserList() {
                 </td>
                 <td className="px-6 py-4 text-right">
                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={() => handleRequestReset(user)}
+                        className="p-2 rounded-lg bg-amber-50 text-amber-500 hover:bg-amber-500 hover:text-white shadow-sm transition-all"
+                        title="Ajukan Reset Kunci HP"
+                      >
+                         <Smartphone className="h-3.5 w-3.5" />
+                      </button>
                       <button 
                         onClick={() => setEditingUser(user)}
                         className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white shadow-sm transition-all"
