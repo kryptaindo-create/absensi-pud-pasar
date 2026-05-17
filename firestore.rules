@@ -1,113 +1,103 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // --- Global Helpers ---
-    function isSignedIn() { return request.auth != null; }
-    function isEmailVerified() { return request.auth.token.email_verified == true; }
-    function getUserData() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
-    function userExists() { return exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
-    function isSuperMaster() { return isSignedIn() && userExists() && getUserData().role == 'SuperMaster'; }
-    function isMasterAdmin() { return isSignedIn() && userExists() && (getUserData().role == 'MasterAdmin' || isSuperMaster()); }
-    function isAdmin() { 
-      return isSignedIn() && (
-        request.auth.token.email == 'kryptaindo@gmail.com' ||
-        (userExists() && getUserData().role in ['Admin', 'MasterAdmin', 'SuperMaster'])
-      ); 
+    // ==========================================
+    // 1. FUNGSI BANTUAN (HELPER FUNCTIONS)
+    // ==========================================
+    
+    // Cek apakah user sudah login
+    function isAuthenticated() {
+      return request.auth != null;
     }
-    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
-
-    // --- Validation Helpers ---
-    function isValidUser(data) {
-      return data.keys().hasAll(['name', 'email', 'status', 'role']) &&
-             data.name is string && data.name.size() > 0 &&
-             data.email is string &&
-             data.status in ['Pending', 'Active', 'Suspended'] &&
-             data.role in ['SuperMaster', 'MasterAdmin', 'Admin', 'Employee'];
+    
+    // Ambil data user yang sedang login
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-
-    match /{document=**} {
-      allow read, write: if false;
+    
+    // Cek Role
+    function isSuperMaster() {
+      return isAuthenticated() && getUserData().role == 'SuperMaster';
+    }
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role in ['Admin', 'SuperMaster'];
+    }
+    function isEmployee() {
+      return isAuthenticated() && getUserData().role == 'Employee';
     }
 
+    // ==========================================
+    // 2. ATURAN KOLEKSI: USERS (DATA KARYAWAN)
+    // ==========================================
     match /users/{userId} {
-      // Allow user to read their own document (even if it doesn't exist yet)
-      allow get: if isSignedIn() && (isOwner(userId) || (userExists() && isAdmin()));
-      allow list: if userExists() && isAdmin();
+      // Siapa saja yang boleh membaca profil? (Admin boleh semua, Karyawan hanya profilnya sendiri)
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       
-      // Allow authenticated user to create their own document OR admin to create any
-      allow create: if isSignedIn() && (
-        (isOwner(userId) && isValidUser(request.resource.data)) ||
-        (userExists() && isAdmin())
-      );
-      
-      allow update: if isSignedIn() && (
-        (userExists() && isSuperMaster()) ||
-        (userExists() && isMasterAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          'status', 'role', 'jabatan', 'golongan', 'nipp', 'pob', 'dob', 'gender', 
-          'address', 'religion', 'tempatTugas', 'attendanceLocations', 'nomorGaji', 
-          'statusPegawai', 'statusPerkawinan', 'sisaCuti', 'tanggalMasuk', 
-          'warnings', 'sp', 'skPengangkatan', 'family', 'contract'
-        ])) ||
-        (userExists() && isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          'pob', 'dob', 'gender', 'address', 'religion', 'tempatTugas', 'nomorGaji', 
-          'statusPegawai', 'statusPerkawinan', 'sisaCuti', 'tanggalMasuk', 'family'
-        ])) ||
-        (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'name', 'deviceId', 'faceEnrollment'
-        ]))
-      );
-      
-      allow delete: if userExists() && isSuperMaster();
-    }
-
-    match /attendance/{atId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && getUserData().status == 'Active';
-      allow update: if isAdmin();
-    }
-
-    match /requests/{reqId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isMasterAdmin();
-    }
-
-    match /payroll/{payId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow write: if isMasterAdmin();
-    }
-
-    match /audit_logs/{logId} {
-      allow read: if isSuperMaster();
+      // Siapa yang boleh menambah user baru? (Hanya Admin)
       allow create: if isAdmin();
+      
+      // Siapa yang boleh mengubah (update) data?
+      // - SuperMaster bebas mengubah apapun.
+      // - Admin boleh mengubah, KECUALI memanipulasi role, status, atau lockedDeviceId (harus lewat Approval Queue)
+      allow update: if isSuperMaster() || (isAdmin() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'lockedDeviceId']));
+      
+      // Karyawan boleh update profil mereka SENDIRI, tapi HANYA untuk field "faceDescriptor" (saat mendaftar wajah awal)
+      allow update: if request.auth.uid == userId 
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['faceDescriptor'])
+                    && resource.data.faceDescriptor == null; // Tidak boleh update kalau sudah terkunci
+      
+      allow delete: if isSuperMaster();
+    }
+
+    // ==========================================
+    // 3. ATURAN KOLEKSI: APPROVAL QUEUE (ANTRIAN)
+    // ==========================================
+    match /approval_queue/{queueId} {
+      allow read: if isAdmin();
+      // Admin biasa boleh mengajukan request (Create)
+      allow create: if isAdmin() && request.resource.data.requestedByAdmin == request.auth.uid;
+      // Hanya SuperMaster yang boleh mengeksekusi/update status antrian
       allow update, delete: if isSuperMaster();
     }
 
-    match /spts/{sptId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow write: if isAdmin();
+    // ==========================================
+    // 4. ATURAN KOLEKSI: ATTENDANCE (DATA ABSEN)
+    // ==========================================
+    match /attendance/{docId} {
+      // Admin bisa baca semua, karyawan baca miliknya sendiri
+      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.userId);
+      
+      // Aturan Ketat untuk Karyawan Absen:
+      // 1. userId harus sesuai dengan akun yang login
+      // 2. WAKTU HARUS JAM SERVER FIREBASE (Mencegah manipulasi jam HP)
+      allow create: if isAuthenticated() 
+                    && request.auth.uid == request.resource.data.userId
+                    && request.resource.data.checkIn.time == request.time;
+      
+      // Karyawan tidak boleh memanipulasi absen yang sudah masuk
+      allow update, delete: if isSuperMaster();
     }
 
-    match /announcements/{annId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /fraudLogs/{logId} {
-      allow read: if isAdmin();
-      allow create: if isSignedIn();
-      allow update, delete: if isAdmin();
-    }
-
-    match /shifts/{shiftId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
+    // ==========================================
+    // 5. ATURAN KOLEKSI: LOCATIONS & CONFIGS
+    // ==========================================
     match /locations/{locId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      // Semua user boleh melihat titik koordinat kantor/pasar
+      allow read: if isAuthenticated();
+      // Hanya SuperMaster yang bisa menambah/mengubah titik geofence
+      allow write: if isSuperMaster();
+    }
+
+    // ==========================================
+    // 6. ATURAN KOLEKSI: AUDIT LOGS (BUKU BESAR)
+    // ==========================================
+    match /audit_logs/{logId} {
+      allow read: if isSuperMaster();
+      // TIDAK ADA SATU MANUSIA PUN YANG BISA MENGHAPUS LOG INI DARI APLIKASI
+      allow update, delete: if false; 
+      allow create: if isSuperMaster() || (isAuthenticated() && request.resource.data.timestamp == request.time);
     }
   }
 }
