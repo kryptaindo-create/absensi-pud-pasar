@@ -134,24 +134,33 @@ export default function SubmissionsScreen() {
             )}
 
             {selectedType && selectedType.id === 'KELUAR_KANTOR' && (
-              <View style={styles.row}>
-                <View style={styles.halfCol}>
-                  <Text style={styles.label}>Dari Jam</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Contoh: 09:00"
-                    value={startTime}
-                    onChangeText={setStartTime}
-                  />
-                </View>
-                <View style={styles.halfCol}>
-                  <Text style={styles.label}>Sampai Jam</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Contoh: 12:00"
-                    value={endTime}
-                    onChangeText={setEndTime}
-                  />
+              <View>
+                <Text style={styles.label}>Tanggal Izin Keluar</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Tgl/Bln/Thn"
+                  value={startDate}
+                  onChangeText={setStartDate}
+                />
+                <View style={styles.row}>
+                  <View style={styles.halfCol}>
+                    <Text style={styles.label}>Dari Jam</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Contoh: 09:00"
+                      value={startTime}
+                      onChangeText={setStartTime}
+                    />
+                  </View>
+                  <View style={styles.halfCol}>
+                    <Text style={styles.label}>Sampai Jam</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Contoh: 12:00"
+                      value={endTime}
+                      onChangeText={setEndTime}
+                    />
+                  </View>
                 </View>
               </View>
             )}

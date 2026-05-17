@@ -91,9 +91,10 @@ export function AdminSubmissions({ profile }: { profile: any }) {
                   {sub.title}
                 </div>
                 
-                {sub.startDate && sub.endDate && (
+                {sub.startDate && (
                   <div className="text-xs font-bold text-slate-700 mb-2">
-                    📅 Tanggal Izin: <span className="text-blue-600">{sub.startDate}</span> s/d <span className="text-blue-600">{sub.endDate}</span>
+                    📅 Tanggal: <span className="text-blue-600">{sub.startDate}</span>
+                    {sub.endDate && <span> s/d <span className="text-blue-600">{sub.endDate}</span></span>}
                   </div>
                 )}
                 
