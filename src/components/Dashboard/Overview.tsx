@@ -1,327 +1,252 @@
 import { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { CheckCircle2, AlertCircle, Clock, MapPin, User, Calendar, CreditCard, Heart, Briefcase, GraduationCap, ShieldAlert, FileText, Info } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
+import { CheckCircle2, AlertCircle, Clock, MapPin, User, Calendar, CreditCard, Heart, Briefcase, GraduationCap, ShieldAlert, FileText, Info, TrendingUp, UserMinus, FileClock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { db } from '../../lib/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 
 export function Overview({ profile }: { profile: any }) {
-  const [availableLocations, setAvailableLocations] = useState<string[]>([]);
+  const [attendances, setAttendances] = useState<any[]>([]);
+  const [submissions, setSubmissions] = useState<any[]>([]);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'locations'), (snap) => {
-      const locs = snap.docs.map(doc => doc.data().name).filter(Boolean);
-      setAvailableLocations(locs.length > 0 ? locs : ['Pusat', 'Unit Petisah', 'Unit Central', 'Unit Aksara', 'Cabang 1', 'Cabang 2', 'Cabang 3']);
+    const userId = profile.id || profile.uid;
+    if (!userId) return;
+
+    // Fetch Attendance
+    const qAtt = query(collection(db, 'attendance'), where('userId', '==', userId));
+    const unsubAtt = onSnapshot(qAtt, (snap) => {
+      setAttendances(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-    return unsub;
-  }, []);
 
-  const calculateAge = (dateString?: string) => {
-    if (!dateString) return 0;
-    const today = new Date();
-    const birthDate = new Date(dateString);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const m = today.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
+    // Fetch Submissions
+    const qSub = query(collection(db, 'submissions'), where('userId', '==', userId));
+    const unsubSub = onSnapshot(qSub, (snap) => {
+      setSubmissions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubAtt();
+      unsubSub();
+    };
+  }, [profile.id, profile.uid]);
+
+  // DATE LOGIC: Periode 16 bulan lalu s/d 15 bulan ini
+  const now = new Date();
+  let startPeriod = new Date(now.getFullYear(), now.getMonth(), 16);
+  let endPeriod = new Date(now.getFullYear(), now.getMonth() + 1, 15, 23, 59, 59);
+
+  if (now.getDate() <= 15) {
+    startPeriod = new Date(now.getFullYear(), now.getMonth() - 1, 16);
+    endPeriod = new Date(now.getFullYear(), now.getMonth(), 15, 23, 59, 59);
+  }
+
+  const isWithinPeriod = (dateString: string) => {
+    const d = new Date(dateString);
+    return d >= startPeriod && d <= endPeriod;
+  };
+
+  // CALCULATIONS
+  // 1. Total masuk all-time (unique dates where type = Masuk)
+  const allTimeMasuk = new Set(attendances.filter(a => a.type === 'Masuk').map(a => a.date)).size;
+
+  // 2. Monthly Attendances (16 to 15)
+  const monthlyAtts = attendances.filter(a => isWithinPeriod(a.date));
+  const monthlyMasukList = monthlyAtts.filter(a => a.type === 'Masuk');
+  
+  // Total masuk sebulan
+  const totalMasukBulanIni = new Set(monthlyMasukList.map(a => a.date)).size;
+
+  // Total terlambat sebulan
+  const totalTerlambatBulanIni = monthlyMasukList.filter(a => a.status === 'Terlambat').length;
+
+  // Lupa Absen Pulang Sebulan
+  const monthlyPulangDates = new Set(monthlyAtts.filter(a => a.type === 'Pulang').map(a => a.date));
+  let lupaPulangBulanIni = 0;
+  monthlyMasukList.forEach(m => {
+    // Jika masuk, tapi tidak ada record pulang di tanggal yang sama, dan tanggalnya bukan hari ini (atau hari ini tapi udah lewat jam)
+    const isToday = new Date().toISOString().split('T')[0] === m.date;
+    if (!monthlyPulangDates.has(m.date) && !isToday) {
+      lupaPulangBulanIni++;
     }
-    return age;
-  };
+  });
 
-  const getDaysRemaining = (dateString?: string) => {
-    if (!dateString) return null;
-    const today = new Date();
-    const expiry = new Date(dateString);
-    const diffTime = expiry.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
+  // Monthly Submissions (Izin / Cuti)
+  // Assuming submission timestamp or startDate is within period
+  const monthlySubs = submissions.filter(s => s.status === 'APPROVED' && (
+    (s.startDate && isWithinPeriod(s.startDate)) || 
+    (s.timestamp?.toDate && isWithinPeriod(s.timestamp.toDate().toISOString()))
+  ));
 
-  const daysToExpiry = getDaysRemaining(profile.contract?.end);
-  const showContractNotice = (profile.statusPegawai === 'HONOR' || profile.statusPegawai === 'PHL') && daysToExpiry !== null && daysToExpiry <= 90;
+  const totalIzinSakitBulanIni = monthlySubs.filter(s => s.type === 'SAKIT' || s.type === 'IZIN').length;
+  const totalCutiBulanIni = monthlySubs.filter(s => s.type === 'CUTI').length;
 
-  const getAllowedLocations = () => {
-    if (profile.attendanceLocations?.length > 0) return profile.attendanceLocations;
-    
-    const roleBased = [
-      'Kepala Cabang 1', 'Kepala Cabang 2', 'Kepala Cabang 3',
-      'Kabag', 'Kasubag', 'Staff Direksi', 'Admin', 'Kepala SPI'
-    ];
-    
-    if (roleBased.includes(profile.jabatan)) {
-      return availableLocations.length > 0 ? availableLocations : ['Pusat', 'Unit Petisah', 'Unit Central', 'Unit Aksara', 'Cabang 1', 'Cabang 2', 'Cabang 3'];
+  // Hitung Alpa (Asumsi 22 hari kerja sebulan, kurangi hadir + izin + cuti)
+  // Untuk simpelnya, kita hitung hari kerja dari startPeriod ke today (jika today < endPeriod)
+  let workingDaysPast = 0;
+  let cursor = new Date(startPeriod);
+  const endCursor = now < endPeriod ? now : endPeriod;
+  while (cursor <= endCursor) {
+    if (cursor.getDay() !== 0 && cursor.getDay() !== 6) { // Bukan Sabtu/Minggu
+      workingDaysPast++;
     }
-    
-    return [profile.tempatTugas || 'Unit Pusat'];
-  };
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  
+  let totalAlpaBulanIni = workingDaysPast - (totalMasukBulanIni + totalIzinSakitBulanIni + totalCutiBulanIni);
+  if (totalAlpaBulanIni < 0) totalAlpaBulanIni = 0;
 
-  const data = [
-    { name: 'Sen', value: 100 },
-    { name: 'Sel', value: 85 },
-    { name: 'Rab', value: 95 },
-    { name: 'Kam', value: 70 },
-    { name: 'Jum', value: 100 },
+  // GRAPH DATA
+  const graphData = [
+    { name: 'Tepat Waktu', value: totalMasukBulanIni - totalTerlambatBulanIni, color: '#10b981' },
+    { name: 'Terlambat', value: totalTerlambatBulanIni, color: '#f59e0b' },
+    { name: 'Izin/Sakit', value: totalIzinSakitBulanIni, color: '#3b82f6' },
+    { name: 'Alpa', value: totalAlpaBulanIni, color: '#ef4444' }
   ];
 
-  const stats = [
-    { label: 'Hadir', value: '12', icon: CheckCircle2, color: 'bg-green-500', text: 'text-green-600' },
-    { label: 'Alpa', value: '0', icon: AlertCircle, color: 'bg-red-500', text: 'text-red-600' },
-    { label: 'Sisa Cuti', value: profile.sisaCuti || '8', icon: Clock, color: 'bg-blue-500', text: 'text-blue-600' },
-  ];
+  const formatDate = (d: Date) => d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Welcome Card */}
-      <div className="theme-card bg-blue-600 p-6 text-white overflow-hidden relative border-none">
+      {/* Header Profile Card */}
+      <div className="theme-card bg-gradient-to-br from-blue-600 to-indigo-700 p-6 text-white overflow-hidden relative border-none shadow-xl">
         <div className="relative z-10">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-100">Profil Pegawai</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-200">Dashboard Karyawan</p>
           <div className="flex items-center gap-4 mt-2">
             <div className="h-16 w-16 rounded-2xl bg-white/20 backdrop-blur-xl border border-white/20 flex items-center justify-center font-bold text-2xl">
-              {profile.name.charAt(0)}
+              {profile.name?.charAt(0)}
             </div>
             <div>
               <h2 className="text-xl font-bold tracking-tight">{profile.name}</h2>
-              <p className="text-xs font-medium text-blue-100">{profile.jabatan} • {profile.nipp || 'NIP Belum Ada'}</p>
+              <p className="text-xs font-medium text-blue-100 mt-1">{profile.jabatan || 'Pegawai'} • {profile.nipp || 'NIP Belum Ada'}</p>
             </div>
           </div>
-          <div className="mt-4 flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1.5 text-[10px] font-bold backdrop-blur-md w-fit border border-white/10 uppercase tracking-wider">
-            <MapPin className="h-3 w-3" />
-            Tugas: {profile.tempatTugas || 'Unit Pusat'}
+          <div className="mt-5 flex gap-2">
+            <div className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1.5 text-[10px] font-bold backdrop-blur-md w-fit border border-white/10 uppercase tracking-wider">
+              <MapPin className="h-3 w-3" />
+              {profile.tempatTugas || 'Unit Pusat'}
+            </div>
+            <div className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1.5 text-[10px] font-bold backdrop-blur-md w-fit border border-white/10 uppercase tracking-wider">
+              <Calendar className="h-3 w-3" />
+              Sisa Cuti: {profile.sisaCuti || 0} Hari
+            </div>
           </div>
         </div>
-        <div className="absolute top-[-20%] right-[-10%] w-48 h-48 rounded-full bg-white/5 blur-3xl"></div>
+        <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/10 blur-3xl"></div>
       </div>
 
-      {/* Contract Notice */}
-      {showContractNotice && (
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="theme-card bg-amber-50 border-amber-200 p-4 flex gap-4"
-        >
-          <div className="h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
-             <Clock className="h-5 w-5" />
-          </div>
-          <div>
-            <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wide">Pemberitahuan Perpanjangan Kontrak</h4>
-            <p className="text-[10px] text-amber-700 mt-1 leading-relaxed">
-              Masa kontrak Anda akan berakhir dalam <span className="font-bold underline">{daysToExpiry} hari</span> ({profile.contract?.end}). 
-              Segera hubungi bagian kepegawaian untuk pengurusan perpanjangan SK.
-            </p>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Quick Stats Grid */}
-      <div className="grid grid-cols-3 gap-3">
-        {stats.map((s) => (
-          <div key={s.label} className="theme-card p-4 text-center bg-white">
-            <div className={`mx-auto mb-3 flex h-8 w-8 items-center justify-center rounded-lg ${s.color} bg-opacity-10 shrink-0`}>
-              <s.icon className={`h-4 w-4 ${s.text}`} />
-            </div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{s.label}</p>
-            <p className={`text-lg font-bold mt-0.5 ${s.text}`}>{s.value}</p>
-          </div>
-        ))}
+      {/* Periode Info */}
+      <div className="flex items-center justify-between px-2">
+        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Statistik Kehadiran</h3>
+        <p className="text-xs font-bold text-slate-500 bg-slate-200/50 px-3 py-1 rounded-full">
+          Periode: {formatDate(startPeriod)} - {formatDate(endPeriod)}
+        </p>
       </div>
 
-      {/* Detailed Information Tabs/Bento */}
-      <div className="space-y-4">
-        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Informasi Detail Akun</h3>
+      {/* Stats Grid - ALL TIME */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="theme-card bg-white p-5 border-slate-100 shadow-sm flex flex-col justify-center items-center text-center">
+          <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center mb-3">
+            <Briefcase className="w-5 h-5 text-blue-600" />
+          </div>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Hadir (All-Time)</p>
+          <h4 className="text-2xl font-black text-slate-800">{allTimeMasuk} <span className="text-xs text-slate-500 font-bold">Hari</span></h4>
+        </div>
+        <div className="theme-card bg-white p-5 border-slate-100 shadow-sm flex flex-col justify-center items-center text-center">
+          <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center mb-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+          </div>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Hadir (Bulan Ini)</p>
+          <h4 className="text-2xl font-black text-slate-800">{totalMasukBulanIni} <span className="text-xs text-slate-500 font-bold">Hari</span></h4>
+        </div>
+      </div>
+
+      {/* Stats Grid - MONTHLY DETAILED */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="theme-card bg-white p-4 border-slate-100 shadow-sm relative overflow-hidden">
+          <div className="relative z-10">
+            <Clock className="w-4 h-4 text-amber-500 mb-2" />
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight h-6">Terlambat</p>
+            <h4 className="text-xl font-black text-slate-800 mt-1">{totalTerlambatBulanIni} <span className="text-[10px] font-bold text-slate-400">Kali</span></h4>
+          </div>
+          <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-amber-50 rounded-full"></div>
+        </div>
+
+        <div className="theme-card bg-white p-4 border-slate-100 shadow-sm relative overflow-hidden">
+          <div className="relative z-10">
+            <UserMinus className="w-4 h-4 text-red-500 mb-2" />
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight h-6">Lupa Pulang</p>
+            <h4 className="text-xl font-black text-slate-800 mt-1">{lupaPulangBulanIni} <span className="text-[10px] font-bold text-slate-400">Kali</span></h4>
+          </div>
+          <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-red-50 rounded-full"></div>
+        </div>
+
+        <div className="theme-card bg-white p-4 border-slate-100 shadow-sm relative overflow-hidden">
+          <div className="relative z-10">
+            <FileClock className="w-4 h-4 text-blue-500 mb-2" />
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight h-6">Izin/Sakit</p>
+            <h4 className="text-xl font-black text-slate-800 mt-1">{totalIzinSakitBulanIni} <span className="text-[10px] font-bold text-slate-400">Hari</span></h4>
+          </div>
+          <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-blue-50 rounded-full"></div>
+        </div>
+
+        <div className="theme-card bg-white p-4 border-slate-100 shadow-sm relative overflow-hidden">
+          <div className="relative z-10">
+            <AlertCircle className="w-4 h-4 text-rose-500 mb-2" />
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight h-6">Alpa (Tanpa Ket)</p>
+            <h4 className="text-xl font-black text-slate-800 mt-1">{totalAlpaBulanIni} <span className="text-[10px] font-bold text-slate-400">Hari</span></h4>
+          </div>
+          <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-rose-50 rounded-full"></div>
+        </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Identity Info */}
-          <div className="theme-card p-5 bg-white space-y-4">
-            <div className="flex items-center gap-3 mb-2">
-              <User className="h-4 w-4 text-blue-600" />
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-tight">Identitas Diri</h4>
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {[
-                { label: 'Tempat Lahir', value: profile.pob || '-' },
-                { label: 'Tgl Lahir', value: profile.dob || '-' },
-                { label: 'Umur', value: `${calculateAge(profile.dob)} Tahun` },
-                { label: 'Jenis Kelamin', value: profile.gender || '-' },
-                { label: 'Agama', value: profile.religion || '-' },
-                { label: 'Status Nikah', value: profile.statusPerkawinan || '-' },
-              ].map(item => (
-                <div key={item.label}>
-                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{item.label}</p>
-                   <p className="text-[11px] font-semibold text-slate-700 mt-0.5">{item.value}</p>
-                </div>
-              ))}
-            </div>
-            <div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Alamat Lengkap</p>
-              <p className="text-[11px] font-semibold text-slate-700 mt-0.5 leading-relaxed">{profile.address || '-'}</p>
-            </div>
+        <div className="theme-card bg-white p-4 border-slate-100 shadow-sm relative overflow-hidden">
+          <div className="relative z-10">
+            <Calendar className="w-4 h-4 text-indigo-500 mb-2" />
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight h-6">Total Cuti</p>
+            <h4 className="text-xl font-black text-slate-800 mt-1">{totalCutiBulanIni} <span className="text-[10px] font-bold text-slate-400">Hari</span></h4>
           </div>
-
-          {/* Employment Info */}
-          <div className="theme-card p-5 bg-white space-y-4">
-            <div className="flex items-center gap-3 mb-2">
-              <Briefcase className="h-4 w-4 text-blue-600" />
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-tight">Pekerjaan & Pangkat</h4>
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {[
-                { label: 'Golongan', value: profile.golongan || '-' },
-                { label: 'Jabatan', value: profile.jabatan || '-' },
-                { label: 'Status Pegawai', value: profile.statusPegawai || '-' },
-                { label: 'Mulai Kerja', value: profile.tanggalMasuk || '-' },
-                { label: 'No. Gaji', value: profile.nomorGaji || '-' },
-                { label: 'NIPP', value: profile.nipp || '-' },
-              ].map(item => (
-                <div key={item.label}>
-                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{item.label}</p>
-                   <p className="text-[11px] font-semibold text-slate-700 mt-0.5">{item.value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Attendance Locations Info */}
-          <div className="theme-card p-5 bg-white space-y-4">
-            <div className="flex items-center gap-3 mb-2">
-              <MapPin className="h-4 w-4 text-blue-600" />
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-tight">Izin Lokasi Absensi</h4>
-            </div>
-            <div className="space-y-3">
-               <p className="text-[10px] text-slate-500 font-medium leading-relaxed text-left">
-                  Berdasarkan jabatan <span className="font-bold text-slate-900">{profile.jabatan}</span>, 
-                  berikut adalah daftar unit lokasi yang diizinkan untuk melakukan absensi:
-               </p>
-               <div className="flex flex-wrap gap-2">
-                  {getAllowedLocations().map((loc: string) => (
-                    <span key={loc} className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-600 text-[10px] font-bold border border-blue-100 uppercase tracking-wide">
-                      {loc}
-                    </span>
-                  ))}
-               </div>
-               <div className="pt-2 border-t border-slate-50">
-                  <p className="text-[9px] text-slate-400 italic text-left">
-                     *Hubungi admin HRIS untuk penyesuaian geofence lokasi unit kerja Anda.
-                  </p>
-               </div>
-            </div>
-          </div>
-
-          {/* Family Info */}
-          <div className="theme-card p-5 bg-white space-y-4">
-            <div className="flex items-center gap-3 mb-2">
-              <Heart className="h-4 w-4 text-red-500" />
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-tight">Keluarga & Tunjangan</h4>
-            </div>
-            <div className="space-y-3">
-              {profile.family?.length > 0 ? (
-                profile.family.map((f: any, i: number) => {
-                  const age = calculateAge(f.dob);
-                  const isEligibleForAllowance = f.relation === 'Anak' ? age < 21 : true;
-                  return (
-                    <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-900">{f.name}</p>
-                        <p className="text-[9px] text-slate-500 uppercase font-medium">{f.relation} • {age} Tahun</p>
-                      </div>
-                      <div className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest ${isEligibleForAllowance ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {isEligibleForAllowance ? 'Dapat Tunjangan' : 'Tunjangan Berhenti'}
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                  <p className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.15em]">Data keluarga belum diisi</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Disciplinary & Documents */}
-          <div className="theme-card p-5 bg-white space-y-4">
-            <div className="flex items-center gap-3 mb-2">
-              <ShieldAlert className="h-4 w-4 text-amber-500" />
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-tight">Peringatan & SP</h4>
-            </div>
-            <div className="space-y-2">
-               {(profile.warnings?.length > 0 || profile.sp?.length > 0) ? (
-                 <>
-                   {profile.warnings?.map((w: any) => (
-                     <div key={`w-${w.level}`} className="p-3 rounded-lg border border-amber-100 bg-amber-50">
-                        <div className="flex justify-between items-start">
-                          <span className="text-[9px] font-black text-amber-700 uppercase tracking-widest">Peringatan {w.level}</span>
-                          <span className="text-[8px] font-bold text-amber-600">{w.date}</span>
-                        </div>
-                        <p className="text-[10px] font-medium text-amber-900 mt-1">Penyebab: {w.cause}</p>
-                     </div>
-                   ))}
-                   {profile.sp?.map((s: any) => (
-                     <div key={`s-${s.level}`} className="p-3 rounded-lg border border-red-100 bg-red-50">
-                        <div className="flex justify-between items-start">
-                          <span className="text-[9px] font-black text-red-700 uppercase tracking-widest">SP {s.level}</span>
-                          <span className="text-[8px] font-bold text-red-600">{s.date}</span>
-                        </div>
-                        <p className="text-[10px] font-medium text-red-900 mt-1">Penyebab: {s.cause}</p>
-                     </div>
-                   ))}
-                 </>
-               ) : (
-                 <div className="text-center py-4 bg-green-50 rounded-xl border border-dashed border-green-200">
-                   <p className="text-[10px] font-medium text-green-600 uppercase tracking-[0.15em]">Tidak ada riwayat pelanggaran</p>
-                 </div>
-               )}
-            </div>
-          </div>
-        </div>
-
-        {/* SK Records (Full Width for dynamic content) */}
-        <div className="theme-card p-6 bg-white">
-           <div className="flex items-center gap-3 mb-6">
-              <FileText className="h-4 w-4 text-blue-600" />
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-tight text-center">Riwayat SK Pengangkatan</h4>
-           </div>
-           <div className="space-y-3">
-              {profile.skPengangkatan?.length > 0 ? (
-                profile.skPengangkatan.map((sk: any, i: number) => (
-                  <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-100">
-                    <div className="flex items-center gap-4">
-                       <div className="h-9 w-9 rounded-lg bg-white shadow-sm flex items-center justify-center text-blue-600 border border-slate-100">
-                          <FileText className="h-4.5 w-4.5" />
-                       </div>
-                       <div>
-                          <p className="text-xs font-bold text-slate-900">{sk.number}</p>
-                          <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider mt-0.5">Tanggal SK: {sk.date}</p>
-                       </div>
-                    </div>
-                    {i === (profile.skPengangkatan.length - 1) && (
-                      <span className="px-3 py-1 rounded-full bg-blue-600 text-[8px] font-black text-white uppercase tracking-[0.15em] shadow-sm shadow-blue-200">Terbaru</span>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                   <p className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em]">Belum ada riwayat SK</p>
-                </div>
-              )}
-           </div>
+          <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-indigo-50 rounded-full"></div>
         </div>
       </div>
-      
-      {/* Attendance Context Info */}
-      <div className="theme-card p-5 bg-slate-900 text-white overflow-hidden relative border-none">
-        <div className="flex items-center gap-4 relative z-10">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 backdrop-blur-md">
-            <Info className="h-5 w-5 text-blue-400" />
-          </div>
-          <div>
-            <h4 className="font-bold text-sm tracking-tight capitalize">Kebijakan Absensi</h4>
-            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-              Sebagai <span className="text-blue-400 font-bold">{profile.jabatan}</span>, Anda diizinkan melakukan absensi di: 
-              <span className="text-slate-200 block mt-1 font-semibold">{profile.attendanceLocations?.join(', ') || 'Lokasi Terdaftar di SK'}</span>
-            </p>
-          </div>
+
+      {/* Chart Section */}
+      <div className="theme-card bg-white p-6 border-slate-100 shadow-sm mt-6">
+        <div className="flex items-center gap-2 mb-6">
+          <TrendingUp className="w-5 h-5 text-blue-600" />
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Grafik Performa Bulan Ini</h3>
         </div>
-        <div className="absolute right-0 top-0 h-full w-1/4 bg-blue-600/10 blur-2xl"></div>
+        
+        <div className="h-64 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={graphData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis 
+                dataKey="name" 
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: '#64748b', fontWeight: 'bold' }}
+                dy={10}
+              />
+              <YAxis 
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: '#64748b', fontWeight: 'bold' }}
+              />
+              <Tooltip 
+                cursor={{ fill: '#f8fafc' }}
+                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                labelStyle={{ fontWeight: 'bold', color: '#0f172a', marginBottom: '4px' }}
+              />
+              <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={50}>
+                {graphData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
+
     </div>
   );
 }
