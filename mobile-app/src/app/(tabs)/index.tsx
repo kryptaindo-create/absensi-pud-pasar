@@ -128,9 +128,20 @@ export default function DashboardScreen() {
     setIsSubmitting(true);
     
     try {
+      let finalStatus = 'HADIR';
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      
+      // Default telat jika lewat 08:15
+      if (currentMinutes > (8 * 60 + 15)) {
+        finalStatus = 'LATE';
+      }
+
       const payload = {
         userId: auth.currentUser.uid,
         userName: auth.currentUser.displayName || auth.currentUser.email,
+        date: new Date().toISOString().split('T')[0],
+        status: finalStatus,
         checkIn: {
           time: serverTimestamp(),
           photoUrl: "akan_diupload_ke_storage",
@@ -170,15 +181,15 @@ export default function DashboardScreen() {
   };
 
   const monthlyAtts = attendances.filter(a => isWithinPeriod(a.date));
-  const monthlyMasukList = monthlyAtts.filter(a => a.type === 'Masuk');
+  const monthlyMasukList = monthlyAtts.filter(a => !!a.checkIn || a.type === 'Masuk');
   const totalMasukBulanIni = new Set(monthlyMasukList.map(a => a.date)).size;
-  const totalTerlambatBulanIni = monthlyMasukList.filter(a => a.status === 'Terlambat').length;
+  const totalTerlambatBulanIni = monthlyMasukList.filter(a => a.status === 'LATE' || a.status === 'Terlambat').length;
 
-  const monthlyPulangDates = new Set(monthlyAtts.filter(a => a.type === 'Pulang').map(a => a.date));
   let lupaPulangBulanIni = 0;
   monthlyMasukList.forEach(m => {
     const isToday = new Date().toISOString().split('T')[0] === m.date;
-    if (!monthlyPulangDates.has(m.date) && !isToday) lupaPulangBulanIni++;
+    const hasCheckOut = m.checkOut || attendances.find(a => a.type === 'Pulang' && a.date === m.date);
+    if (!hasCheckOut && !isToday) lupaPulangBulanIni++;
   });
 
   const monthlySubs = submissions.filter(s => {
@@ -204,7 +215,7 @@ export default function DashboardScreen() {
   let totalAlpaBulanIni = workingDaysPast - (totalMasukBulanIni + totalIzinSakitBulanIni + totalCutiBulanIni);
   if (totalAlpaBulanIni < 0) totalAlpaBulanIni = 0;
   
-  const allTimeMasuk = new Set(attendances.filter(a => a.type === 'Masuk').map(a => a.date)).size;
+  const allTimeMasuk = new Set(attendances.filter(a => !!a.checkIn || a.type === 'Masuk').map(a => a.date)).size;
 
   if (!isReady) {
     return (
@@ -249,7 +260,7 @@ export default function DashboardScreen() {
           <View style={styles.statCard}>
             <View style={[styles.iconWrapper, { backgroundColor: '#fee2e2' }]}><AlertTriangle color="#ef4444" size={16} /></View>
             <Text style={styles.statValue}>{lupaPulangBulanIni}</Text>
-            <Text style={styles.statLabel}>Lupa Pulang</Text>
+            <Text style={styles.statLabel}>Tidak Absen Pulang</Text>
           </View>
           <View style={styles.statCard}>
             <View style={[styles.iconWrapper, { backgroundColor: '#dbeafe' }]}><FileText color="#3b82f6" size={16} /></View>

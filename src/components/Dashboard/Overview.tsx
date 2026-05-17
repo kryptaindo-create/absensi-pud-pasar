@@ -49,26 +49,26 @@ export function Overview({ profile }: { profile: any }) {
   };
 
   // CALCULATIONS
-  // 1. Total masuk all-time (unique dates where type = Masuk)
-  const allTimeMasuk = new Set(attendances.filter(a => a.type === 'Masuk').map(a => a.date)).size;
+  // 1. Total masuk all-time
+  const allTimeMasuk = new Set(attendances.filter(a => !!a.checkIn || a.type === 'Masuk').map(a => a.date)).size;
 
   // 2. Monthly Attendances (16 to 15)
   const monthlyAtts = attendances.filter(a => isWithinPeriod(a.date));
-  const monthlyMasukList = monthlyAtts.filter(a => a.type === 'Masuk');
+  const monthlyMasukList = monthlyAtts.filter(a => !!a.checkIn || a.type === 'Masuk');
   
   // Total masuk sebulan
   const totalMasukBulanIni = new Set(monthlyMasukList.map(a => a.date)).size;
 
   // Total terlambat sebulan
-  const totalTerlambatBulanIni = monthlyMasukList.filter(a => a.status === 'Terlambat').length;
+  const totalTerlambatBulanIni = monthlyMasukList.filter(a => a.status === 'LATE' || a.status === 'Terlambat').length;
 
   // Lupa Absen Pulang Sebulan
-  const monthlyPulangDates = new Set(monthlyAtts.filter(a => a.type === 'Pulang').map(a => a.date));
   let lupaPulangBulanIni = 0;
   monthlyMasukList.forEach(m => {
     // Jika masuk, tapi tidak ada record pulang di tanggal yang sama, dan tanggalnya bukan hari ini (atau hari ini tapi udah lewat jam)
     const isToday = new Date().toISOString().split('T')[0] === m.date;
-    if (!monthlyPulangDates.has(m.date) && !isToday) {
+    const hasCheckOut = m.checkOut || attendances.find(a => a.type === 'Pulang' && a.date === m.date);
+    if (!hasCheckOut && !isToday) {
       lupaPulangBulanIni++;
     }
   });
@@ -184,7 +184,7 @@ export function Overview({ profile }: { profile: any }) {
         <div className="theme-card bg-white p-4 border-slate-100 shadow-sm relative overflow-hidden">
           <div className="relative z-10">
             <AlertTriangle className="w-4 h-4 text-red-500 mb-2" />
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight h-6">Lupa Pulang</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight h-6">Tidak Absen Pulang</p>
             <h4 className="text-xl font-black text-slate-800 mt-1">{lupaPulangBulanIni} <span className="text-[10px] font-bold text-slate-400">Kali</span></h4>
           </div>
           <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-red-50 rounded-full"></div>
