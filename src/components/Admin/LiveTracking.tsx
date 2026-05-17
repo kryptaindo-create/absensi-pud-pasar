@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { MapPin, Navigation, User, Signal, History, Info, ChevronRight, Plus, X, Save } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import 'leaflet/dist/leaflet.css';
 
 // Fix default marker icon

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export function ShiftManagement() {
   const [shifts, setShifts] = useState<any[]>([]);

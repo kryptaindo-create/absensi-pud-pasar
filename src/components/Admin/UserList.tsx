@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { Search, Filter, Plus, ShieldCheck, UserCheck, AlertTriangle, MoreVertical, Edit2, Trash2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Search, Plus, Edit2, Trash2, AlertTriangle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { UserEditor } from './UserEditor';
+import { CreateEmployeeModal } from './CreateEmployeeModal';
 
 export function UserList() {
   const [users, setUsers] = useState<any[]>([]);
@@ -13,7 +14,7 @@ export function UserList() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [unitFilter, setUnitFilter] = useState('ALL');
   const [editingUser, setEditingUser] = useState<any | null>(null);
-  const [isAdding, setIsAdding] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     // If we're in demo mode (no real auth user), we can't fetch from Firestore with current rules
@@ -69,7 +70,7 @@ export function UserList() {
         </div>
         <div className="flex flex-wrap gap-3">
           <button 
-            onClick={() => setIsAdding(true)}
+            onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 whitespace-nowrap"
           >
             <Plus className="h-4 w-4" /> Tambah Pegawai
@@ -183,10 +184,12 @@ export function UserList() {
             onClose={() => setEditingUser(null)} 
           />
         )}
-        {isAdding && (
-          <UserEditor 
-            user={{ name: '', email: '', role: 'Employee', status: 'Active', createdAt: new Date().toISOString() }} 
-            onClose={() => setIsAdding(false)} 
+        {showCreateModal && (
+          <CreateEmployeeModal
+            onClose={() => setShowCreateModal(false)}
+            onSuccess={() => {
+              // Refresh akan otomatis lewat onSnapshot
+            }}
           />
         )}
       </AnimatePresence>

@@ -4,7 +4,7 @@ import {
   ChevronRight, Search, Plus, User, FileText, Ban, CheckCircle2,
   AlertCircle, Wallet, Briefcase, Heart, PieChart as ChartIcon
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { collection, query, onSnapshot, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 

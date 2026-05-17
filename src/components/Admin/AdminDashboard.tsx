@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, Calendar, FileText, Wallet, Settings, ShieldCheck, 
   Menu, X, LayoutDashboard, Database, ClipboardCheck, History,

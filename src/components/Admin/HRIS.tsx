@@ -4,7 +4,7 @@ import {
   Search, Plus, ChevronRight, FileCode, Clock,
   Calendar, Hash, User, X, Send
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export function HRISManagement() {
   const [activeSubTab, setActiveSubTab] = useState('data');

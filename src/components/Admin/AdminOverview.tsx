@@ -7,7 +7,7 @@ import {
   Clock, FileText, Map, Briefcase, Award, Building2,
   Calendar, AlertCircle
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 
 export function AdminOverview() {
   const stats = [

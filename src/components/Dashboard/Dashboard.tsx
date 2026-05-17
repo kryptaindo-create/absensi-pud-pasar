@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Home, Calendar, ClipboardList, Wallet, User, LogOut, Bell } from 'lucide-react';
 import { auth } from '../../lib/firebase';
 import { Overview } from './Overview';

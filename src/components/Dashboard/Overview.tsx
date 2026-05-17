@@ -1,8 +1,21 @@
+import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { CheckCircle2, AlertCircle, Clock, MapPin, User, Calendar, CreditCard, Heart, Briefcase, GraduationCap, ShieldAlert, FileText, Info } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
+import { db } from '../../lib/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
 
 export function Overview({ profile }: { profile: any }) {
+  const [availableLocations, setAvailableLocations] = useState<string[]>([]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'locations'), (snap) => {
+      const locs = snap.docs.map(doc => doc.data().name).filter(Boolean);
+      setAvailableLocations(locs.length > 0 ? locs : ['Pusat', 'Unit Petisah', 'Unit Central', 'Unit Aksara', 'Cabang 1', 'Cabang 2', 'Cabang 3']);
+    });
+    return unsub;
+  }, []);
+
   const calculateAge = (dateString?: string) => {
     if (!dateString) return 0;
     const today = new Date();
@@ -35,7 +48,7 @@ export function Overview({ profile }: { profile: any }) {
     ];
     
     if (roleBased.includes(profile.jabatan)) {
-      return ['Pusat', 'Unit Petisah', 'Unit Central', 'Unit Aksara', 'Cabang 1', 'Cabang 2', 'Cabang 3'];
+      return availableLocations.length > 0 ? availableLocations : ['Pusat', 'Unit Petisah', 'Unit Central', 'Unit Aksara', 'Cabang 1', 'Cabang 2', 'Cabang 3'];
     }
     
     return [profile.tempatTugas || 'Unit Pusat'];

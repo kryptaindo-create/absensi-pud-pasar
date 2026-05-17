@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { collection, query, onSnapshot, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export function SptManagement() {
   const [activeSubTab, setActiveSubTab] = useState<'spt' | 'announcements'>('spt');

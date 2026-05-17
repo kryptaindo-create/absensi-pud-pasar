@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { collection, query, onSnapshot, orderBy, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export function FraudAnalysis() {
   const [logs, setLogs] = useState<any[]>([]);

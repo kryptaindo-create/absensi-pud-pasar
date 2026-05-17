@@ -10,7 +10,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line 
 } from 'recharts';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 
 export function UnitStats() {
   const [attendance, setAttendance] = useState<any[]>([]);

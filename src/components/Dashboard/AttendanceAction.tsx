@@ -1,23 +1,121 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Camera, MapPin, CheckCircle2, ShieldCheck, RefreshCcw, Navigation } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Camera, MapPin, CheckCircle2, RefreshCcw, Navigation, AlertCircle } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
+
+// Cek apakah titik (lat, lng) berada di dalam polygon menggunakan ray-casting
+function isPointInPolygon(lat: number, lng: number, polygon: { lat: number; lng: number }[]): boolean {
+  if (polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lng, yi = polygon[i].lat;
+    const xj = polygon[j].lng, yj = polygon[j].lat;
+    const intersect = ((yi > lat) !== (yj > lat)) && (lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// Cek apakah titik berada dalam radius (meter) dari pusat
+function isPointInRadius(lat: number, lng: number, centerLat: number, centerLng: number, radiusM: number): boolean {
+  const R = 6371000;
+  const dLat = ((lat - centerLat) * Math.PI) / 180;
+  const dLng = ((lng - centerLng) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((centerLat * Math.PI) / 180) * Math.cos((lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return distance <= radiusM;
+}
 
 export function AttendanceAction({ profile }: { profile: any }) {
   const [step, setStep] = useState<'start' | 'verification' | 'success'>('start');
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isInside, setIsInside] = useState(false);
+  const [locationName, setLocationName] = useState<string>('');
+  const [geoLoading, setGeoLoading] = useState(true);
+  const [geoError, setGeoError] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [cameraError, setCameraError] = useState<string>('');
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        // Simulating Geofencing check
-        setIsInside(Math.random() > 0.3);
-      });
+    if (!navigator.geolocation) {
+      setGeoLoading(false);
+      return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const userLat = pos.coords.latitude;
+        const userLng = pos.coords.longitude;
+        setLocation({ lat: userLat, lng: userLng });
+
+        try {
+          // Ambil semua lokasi dari Firestore dan cek geofence
+          const snap = await getDocs(collection(db, 'locations'));
+          let found = false;
+          let foundName = '';
+
+          // Tentukan lokasi yang diizinkan untuk pegawai ini
+          const allowedNames = profile.attendanceLocations?.length > 0 
+            ? profile.attendanceLocations 
+            : [profile.tempatTugas];
+
+          for (const docSnap of snap.docs) {
+            const loc = docSnap.data();
+
+            // Hanya periksa jika lokasi ini diizinkan untuk pegawai
+            if (!allowedNames.includes(loc.name)) continue;
+
+            // Cek polygon dulu (lebih akurat)
+            if (loc.points && loc.points.length >= 3) {
+              const parsedPoints = loc.points.map((p: any) => ({
+                lat: parseFloat(p.lat),
+                lng: parseFloat(p.lng)
+              }));
+              if (isPointInPolygon(userLat, userLng, parsedPoints)) {
+                found = true;
+                foundName = loc.name;
+                break;
+              }
+            }
+
+            // Fallback ke radius jika tidak ada polygon
+            if (!found && loc.latitude && loc.longitude && loc.radius) {
+              if (isPointInRadius(userLat, userLng, parseFloat(loc.latitude), parseFloat(loc.longitude), parseFloat(loc.radius))) {
+                found = true;
+                foundName = loc.name;
+                break;
+              }
+            }
+          }
+
+          setIsInside(found);
+          setLocationName(foundName);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.GET, 'locations');
+        } finally {
+          setGeoLoading(false);
+        }
+      },
+      (err) => {
+        setGeoLoading(false);
+        if (err.code === 1) {
+          setGeoError('Izin GPS ditolak. Silakan izinkan akses lokasi di pengaturan browser Anda.');
+        } else if (err.code === 2) {
+          setGeoError('Sinyal GPS tidak ditemukan. Pastikan GPS/Lokasi HP Anda menyala.');
+        } else if (err.code === 3) {
+          setGeoError('Waktu permintaan GPS habis (Timeout). Coba cari area terbuka.');
+        } else {
+          setGeoError(`GPS Error: ${err.message}`);
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   }, []);
 
   const handleProcess = async () => {
@@ -37,6 +135,12 @@ export function AttendanceAction({ profile }: { profile: any }) {
           },
           status: 'Present'
         });
+        
+        // Stop camera stream
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+        }
+        
         setStep('success');
       } catch (err) {
         handleFirestoreError(err, OperationType.CREATE, 'attendance');
@@ -44,6 +148,42 @@ export function AttendanceAction({ profile }: { profile: any }) {
         setLoading(false);
       }
     }, 2000);
+  };
+
+  // Start camera when entering verification step
+  useEffect(() => {
+    if (step === 'verification') {
+      startCamera();
+    }
+    return () => {
+      // Cleanup camera on unmount
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [step]);
+
+  const startCamera = async () => {
+    setCameraError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err: any) {
+      console.error('Camera error:', err);
+      if (err.name === 'NotAllowedError') {
+        setCameraError('Izin kamera ditolak. Aktifkan di pengaturan browser.');
+      } else if (err.name === 'NotFoundError') {
+        setCameraError('Kamera tidak ditemukan.');
+      } else {
+        setCameraError('Gagal mengakses kamera.');
+      }
+    }
   };
 
   return (
@@ -80,23 +220,51 @@ export function AttendanceAction({ profile }: { profile: any }) {
               <div className="absolute bottom-12 right-12 h-6 w-6 border-b-2 border-r-2 border-blue-600/40" />
             </div>
 
-            <div className="space-y-4">
-              <div className={`flex items-center gap-3.5 rounded-xl p-4 border transition-all ${isInside ? 'bg-green-50/50 border-green-100' : 'bg-red-50/50 border-red-100'}`}>
-                <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${isInside ? 'bg-green-500' : 'bg-red-500'} text-white shrink-0`}>
-                  <MapPin className="h-4.5 w-4.5" />
+              <div className="space-y-4">
+              <div className={`flex items-center gap-3.5 rounded-xl p-4 border transition-all ${
+                geoLoading
+                  ? 'bg-slate-50 border-slate-200'
+                  : isInside
+                  ? 'bg-green-50/50 border-green-100'
+                  : 'bg-red-50/50 border-red-100'
+              }`}>
+                <div className={`flex h-9 w-9 items-center justify-center rounded-lg shrink-0 text-white ${
+                  geoLoading ? 'bg-slate-400' : isInside ? 'bg-green-500' : 'bg-red-500'
+                }`}>
+                  {geoLoading ? (
+                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
+                      <Navigation className="h-4 w-4" />
+                    </motion.div>
+                  ) : isInside ? (
+                    <MapPin className="h-4 w-4" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4" />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className={`text-xs font-bold uppercase tracking-wide ${isInside ? 'text-green-900' : 'text-red-900'}`}>
-                    {isInside ? 'Di Dalam Area' : 'Di Luar Area'}
+                  <h4 className={`text-xs font-bold uppercase tracking-wide ${
+                    geoLoading ? 'text-slate-500' : isInside ? 'text-green-900' : 'text-red-900'
+                  }`}>
+                    {geoLoading
+                      ? 'Mendeteksi Lokasi...'
+                      : isInside
+                      ? `Di Dalam Area${locationName ? ` — ${locationName}` : ''}`
+                      : 'Di Luar Area Kerja'}
                   </h4>
-                  <p className={`text-[10px] font-medium mt-0.5 truncate ${isInside ? 'text-green-700/70' : 'text-red-700/70'}`}>
-                    {location ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : 'Mendeteksi...'}
+                  <p className={`text-[10px] font-medium mt-0.5 truncate ${
+                    geoLoading ? 'text-slate-400' : isInside ? 'text-green-700/70' : 'text-red-700/70'
+                  }`}>
+                    {location
+                      ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`
+                      : geoLoading
+                      ? 'Meminta izin GPS...'
+                      : geoError || 'GPS tidak tersedia'}
                   </p>
                 </div>
               </div>
 
               <button
-                disabled={!isInside || loading}
+                disabled={!isInside || loading || geoLoading}
                 onClick={() => setStep('verification')}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-3.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition-all uppercase tracking-[0.1em]"
               >
@@ -112,16 +280,50 @@ export function AttendanceAction({ profile }: { profile: any }) {
             key="verif"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex h-[60vh] flex-col items-center justify-center text-center space-y-6"
+            className="flex flex-col items-center text-center space-y-6"
           >
-            <div className="relative">
-              <motion.div 
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                className="h-24 w-24 rounded-full border-[3px] border-slate-100 border-t-blue-600"
+            {/* Video Camera Stream */}
+            <div className="relative w-full max-w-sm aspect-[3/4] rounded-2xl overflow-hidden bg-slate-900 shadow-2xl">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
               />
-              <Camera className="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 text-blue-600" />
+              
+              {/* Overlay scan frame */}
+              <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute top-8 left-8 h-12 w-12 border-t-4 border-l-4 border-blue-500" />
+                <div className="absolute top-8 right-8 h-12 w-12 border-t-4 border-r-4 border-blue-500" />
+                <div className="absolute bottom-8 left-8 h-12 w-12 border-b-4 border-l-4 border-blue-500" />
+                <div className="absolute bottom-8 right-8 h-12 w-12 border-b-4 border-r-4 border-blue-500" />
+                
+                {/* Scanning line animation */}
+                <motion.div
+                  animate={{ y: ['0%', '100%'] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                  className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50"
+                />
+              </div>
+
+              {/* Camera error overlay */}
+              {cameraError && (
+                <div className="absolute inset-0 bg-slate-900/90 flex items-center justify-center p-6">
+                  <div className="text-center space-y-3">
+                    <AlertCircle className="h-12 w-12 text-red-400 mx-auto" />
+                    <p className="text-sm text-white font-semibold">{cameraError}</p>
+                    <button
+                      onClick={startCamera}
+                      className="text-xs text-blue-400 hover:underline font-bold uppercase tracking-wide"
+                    >
+                      Coba Lagi
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
+
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Memverifikasi Wajah</h3>
               <p className="mt-2 text-xs text-slate-500 font-medium max-w-[200px] mx-auto leading-relaxed">
@@ -131,9 +333,10 @@ export function AttendanceAction({ profile }: { profile: any }) {
             
             <button 
               onClick={handleProcess}
-              className="mt-4 flex items-center gap-2 rounded-lg bg-slate-50 border border-slate-200 px-5 py-2 text-[10px] font-bold text-slate-600 hover:bg-slate-100 transition-all uppercase tracking-widest"
+              disabled={!!cameraError}
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-xs font-bold text-white hover:bg-blue-700 transition-all uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
             >
-              <RefreshCcw className="h-3 w-3" /> Simulasi Capture
+              <Camera className="h-4 w-4" /> Capture & Absen
             </button>
           </motion.div>
         )}

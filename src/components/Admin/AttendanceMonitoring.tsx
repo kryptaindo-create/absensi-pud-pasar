@@ -6,7 +6,7 @@ import {
   Search, Filter, ChevronLeft, ChevronRight, FileText, Download,
   UserX, UserCheck, Timer, Coffee, Thermometer
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export function AttendanceMonitoring() {
   const [attendance, setAttendance] = useState<any[]>([]);

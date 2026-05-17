@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Debug Auth — PUD Pasar</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Courier New', monospace; background: #0f172a; color: #94a3b8; padding: 24px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { color: #60a5fa; font-size: 18px; margin-bottom: 20px; }
+    button { background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-bottom: 20px; }
+    button:hover { background: #1d4ed8; }
+    #output { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; white-space: pre-wrap; font-size: 13px; line-height: 1.6; }
+    .ok { color: #4ade80; }
+    .err { color: #f87171; }
+    .warn { color: #fbbf24; }
+    .info { color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Debug Firebase Auth & Firestore</h1>
+    <button onclick="runDebug()">Jalankan Debug</button>
+    <div id="output">Klik tombol untuk mulai...</div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js';
+    import { getAuth, signInWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js';
+    import { getFirestore, doc, getDoc, collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js';
+
+    const firebaseConfig = {
+      projectId: "studio-9813212423-b71a0",
+      appId: "1:1077418572142:web:fd1b41362ddce80837a97f",
+      apiKey: "AIzaSyCCrAgF_jeIpmDCRN6Gu1NO62DA9efvL7w",
+      authDomain: "studio-9813212423-b71a0.firebaseapp.com",
+      storageBucket: "studio-9813212423-b71a0.firebasestorage.app",
+      messagingSenderId: "1077418572142",
+    };
+
+    const FIRESTORE_DB_ID = "ai-studio-absensipudpasar-26fa180a-43ad-4590-abef-e7831b5854f3";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app, FIRESTORE_DB_ID);
+
+    const output = document.getElementById('output');
+
+    function log(msg, type = 'info') {
+      output.innerHTML += `<span class="${type}">${msg}</span>\n`;
+    }
+
+    window.runDebug = async function() {
+      output.innerHTML = '';
+      log('═══════════════════════════════════════', 'info');
+      log('🔍 DEBUG FIREBASE AUTH & FIRESTORE', 'info');
+      log('═══════════════════════════════════════\n', 'info');
+
+      try {
+        // 1. Cek koneksi Firestore
+        log('1️⃣  Mengecek koneksi Firestore...', 'info');
+        try {
+          const testSnap = await getDocs(collection(db, 'users'));
+          log(`✓ Firestore terhubung (${testSnap.size} dokumen di collection 'users')`, 'ok');
+        } catch (err) {
+          log(`✗ Firestore ERROR: ${err.message}`, 'err');
+          log(`  Code: ${err.code}`, 'err');
+          return;
+        }
+
+        // 2. Login dengan akun Super Master
+        log('\n2️⃣  Login dengan supermaster@pudpasar.com...', 'info');
+        let user;
+        try {
+          const cred = await signInWithEmailAndPassword(auth, 'supermaster@pudpasar.com', 'Admin@1234');
+          user = cred.user;
+          log(`✓ Login berhasil`, 'ok');
+          log(`  UID: ${user.uid}`, 'info');
+          log(`  Email: ${user.email}`, 'info');
+        } catch (err) {
+          log(`✗ Login GAGAL: ${err.message}`, 'err');
+          log(`  Code: ${err.code}`, 'err');
+          if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+            log(`\n⚠ Akun belum dibuat. Jalankan seed-accounts.html dulu!`, 'warn');
+          }
+          return;
+        }
+
+        // 3. Cek dokumen Firestore
+        log('\n3️⃣  Mengecek dokumen Firestore users/{uid}...', 'info');
+        try {
+          const userRef = doc(db, 'users', user.uid);
+          const userSnap = await getDoc(userRef);
+          
+          if (userSnap.exists()) {
+            log(`✓ Dokumen ditemukan!`, 'ok');
+            const data = userSnap.data();
+            log(`\n📄 Data profil:`, 'info');
+            log(JSON.stringify(data, null, 2), 'info');
+          } else {
+            log(`✗ Dokumen TIDAK DITEMUKAN di Firestore!`, 'err');
+            log(`  Path: users/${user.uid}`, 'err');
+            log(`\n⚠ Ini penyebab redirect ke halaman Register.`, 'warn');
+            log(`  Solusi: Jalankan seed-accounts.html untuk membuat dokumen.`, 'warn');
+          }
+        } catch (err) {
+          log(`✗ Error saat mengambil dokumen: ${err.message}`, 'err');
+          log(`  Code: ${err.code}`, 'err');
+        }
+
+        // 4. List semua users
+        log('\n4️⃣  Daftar semua dokumen di collection users:', 'info');
+        const usersSnap = await getDocs(collection(db, 'users'));
+        if (usersSnap.empty) {
+          log(`  (kosong — belum ada dokumen)`, 'warn');
+        } else {
+          usersSnap.forEach(doc => {
+            const data = doc.data();
+            log(`  • ${doc.id} → ${data.name || '(no name)'} (${data.email || '(no email)'})`, 'info');
+          });
+        }
+
+        log('\n═══════════════════════════════════════', 'info');
+        log('✓ Debug selesai', 'ok');
+
+      } catch (err) {
+        log(`\n✗ UNEXPECTED ERROR: ${err.message}`, 'err');
+        console.error(err);
+      }
+    };
+  </script>
+</body>
+</html>

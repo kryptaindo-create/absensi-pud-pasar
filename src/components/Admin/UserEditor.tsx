@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { motion } from 'motion/react';
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { X, Save, Plus, Trash2, User, Briefcase, Heart, ShieldAlert, FileText, MapPin } from 'lucide-react';
 import { db, auth, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { doc, updateDoc, collection, addDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, addDoc, onSnapshot } from 'firebase/firestore';
 
 interface UserEditorProps {
   user: any;
@@ -12,8 +12,24 @@ interface UserEditorProps {
 export function UserEditor({ user, onClose }: UserEditorProps) {
   const [formData, setFormData] = useState({ ...user });
   const [loading, setLoading] = useState(false);
+  const [availableLocations, setAvailableLocations] = useState<string[]>([]);
+  const [availableShifts, setAvailableShifts] = useState<any[]>([]);
   const isNew = !user.id;
   const isDemoMode = !auth.currentUser;
+
+  useEffect(() => {
+    const unsubLocs = onSnapshot(collection(db, 'locations'), (snap) => {
+      const locs = snap.docs.map(doc => doc.data().name).filter(Boolean);
+      setAvailableLocations(locs.length > 0 ? locs : ['Pusat', 'Unit Petisah', 'Unit Central', 'Unit Aksara', 'Cabang 1', 'Cabang 2', 'Cabang 3']);
+    });
+    const unsubShifts = onSnapshot(collection(db, 'shifts'), (snap) => {
+      setAvailableShifts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => {
+      unsubLocs();
+      unsubShifts();
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -318,6 +334,19 @@ export function UserEditor({ user, onClose }: UserEditorProps) {
                    onChange={(e) => setFormData({...formData, tempatTugas: e.target.value})}
                  />
                </div>
+               <div className="space-y-2">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Shift Kerja</label>
+                 <select 
+                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-4 text-xs font-semibold"
+                   value={formData.shiftId || ''}
+                   onChange={(e) => setFormData({...formData, shiftId: e.target.value})}
+                 >
+                   <option value="">Default (Sesuai Unit)</option>
+                   {availableShifts.map(s => (
+                     <option key={s.id} value={s.id}>{s.name} ({s.startTime} - {s.endTime})</option>
+                   ))}
+                 </select>
+               </div>
             </div>
           </section>
 
@@ -535,7 +564,7 @@ export function UserEditor({ user, onClose }: UserEditorProps) {
             <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100 italic text-[10px] text-slate-500 text-center">
                Untuk mengedit lokasi absensi, tambahkan unit pasar atau cabang ke dalam daftar lokasi yang diizinkan untuk NIPP ini.
                <div className="mt-4 flex flex-wrap gap-2 justify-center not-italic">
-                  {['Pusat', 'Unit Petisah', 'Unit Central', 'Unit Aksara', 'Cabang 1', 'Cabang 2', 'Cabang 3'].map(loc => {
+                  {availableLocations.map(loc => {
                     const isSelected = (formData.attendanceLocations || []).includes(loc);
                     return (
                       <button 

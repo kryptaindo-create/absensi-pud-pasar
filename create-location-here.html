@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Buat Lokasi Absensi — PUD Pasar</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; }
+    .card { background: white; border-radius: 16px; padding: 40px; max-width: 520px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+    h1 { font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 4px; }
+    p.sub { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; margin-bottom: 32px; }
+    .info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; margin-bottom: 12px; }
+    .info .label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.15em; color: #64748b; margin-bottom: 4px; }
+    .info .value { font-size: 14px; font-weight: 700; color: #0f172a; font-family: monospace; }
+    input, textarea { width: 100%; margin-top: 8px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 14px; font-weight: 600; font-family: inherit; }
+    input:focus, textarea:focus { outline: none; border-color: #2563eb; background: white; }
+    button { width: 100%; margin-top: 24px; padding: 14px; background: #2563eb; color: white; border: none; border-radius: 12px; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #94a3b8; cursor: not-allowed; }
+    #log { margin-top: 20px; background: #0f172a; border-radius: 12px; padding: 16px; font-family: monospace; font-size: 12px; color: #94a3b8; min-height: 80px; white-space: pre-wrap; display: none; }
+    #log.show { display: block; }
+    .ok { color: #4ade80; }
+    .err { color: #f87171; }
+    .info-log { color: #60a5fa; }
+    .warn { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>📍 Buat Lokasi Absensi</h1>
+    <p class="sub">Berdasarkan posisi Anda sekarang</p>
+
+    <div id="gps-info" style="display:none;">
+      <div class="info">
+        <div class="label">Latitude</div>
+        <div class="value" id="lat">-</div>
+      </div>
+      <div class="info">
+        <div class="label">Longitude</div>
+        <div class="value" id="lng">-</div>
+      </div>
+    </div>
+
+    <div style="margin-top: 20px;">
+      <label style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em;">Nama Lokasi</label>
+      <input type="text" id="name" placeholder="Contoh: Kantor Pusat PUD Pasar" />
+    </div>
+
+    <div style="margin-top: 16px;">
+      <label style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em;">Alamat</label>
+      <textarea id="address" rows="3" placeholder="Jl. Contoh No. 123, Medan"></textarea>
+    </div>
+
+    <div style="margin-top: 16px;">
+      <label style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em;">Radius Geofence (meter)</label>
+      <input type="number" id="radius" value="100" min="50" max="1000" step="50" />
+    </div>
+
+    <button id="btn" onclick="createLocation()">Deteksi GPS & Buat Lokasi</button>
+    <div id="log"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js';
+    import { getAuth } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js';
+    import { getFirestore, collection, addDoc } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js';
+
+    const firebaseConfig = {
+      projectId: "studio-9813212423-b71a0",
+      appId: "1:1077418572142:web:fd1b41362ddce80837a97f",
+      apiKey: "AIzaSyCCrAgF_jeIpmDCRN6Gu1NO62DA9efvL7w",
+      authDomain: "studio-9813212423-b71a0.firebaseapp.com",
+      storageBucket: "studio-9813212423-b71a0.firebasestorage.app",
+      messagingSenderId: "1077418572142",
+    };
+
+    const FIRESTORE_DB_ID = "ai-studio-absensipudpasar-26fa180a-43ad-4590-abef-e7831b5854f3";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app, FIRESTORE_DB_ID);
+
+    const logEl = document.getElementById('log');
+    const btn = document.getElementById('btn');
+    const gpsInfo = document.getElementById('gps-info');
+    const latEl = document.getElementById('lat');
+    const lngEl = document.getElementById('lng');
+
+    let currentLat = null;
+    let currentLng = null;
+
+    function log(msg, type = 'info-log') {
+      logEl.classList.add('show');
+      logEl.innerHTML += `<span class="${type}">${msg}</span>\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    window.createLocation = async function() {
+      btn.disabled = true;
+      btn.textContent = 'Mendeteksi GPS...';
+      logEl.innerHTML = '';
+
+      log('🌍 Meminta izin GPS...', 'info-log');
+
+      if (!navigator.geolocation) {
+        log('✗ Browser tidak mendukung GPS', 'err');
+        btn.disabled = false;
+        btn.textContent = 'Deteksi GPS & Buat Lokasi';
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          currentLat = position.coords.latitude;
+          currentLng = position.coords.longitude;
+
+          latEl.textContent = currentLat.toFixed(6);
+          lngEl.textContent = currentLng.toFixed(6);
+          gpsInfo.style.display = 'block';
+
+          log(`✓ GPS terdeteksi: ${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}`, 'ok');
+
+          const name = document.getElementById('name').value.trim();
+          const address = document.getElementById('address').value.trim();
+          const radius = parseInt(document.getElementById('radius').value);
+
+          if (!name) {
+            log('✗ Nama lokasi wajib diisi', 'err');
+            btn.disabled = false;
+            btn.textContent = 'Deteksi GPS & Buat Lokasi';
+            return;
+          }
+
+          log('\n📝 Menyimpan lokasi ke Firestore...', 'info-log');
+
+          try {
+            const docRef = await addDoc(collection(db, 'locations'), {
+              name,
+              address: address || '-',
+              latitude: currentLat,
+              longitude: currentLng,
+              radius,
+              type: 'OFFICE',
+              points: [],
+              createdAt: new Date().toISOString(),
+            });
+
+            log(`✓ Lokasi berhasil dibuat (ID: ${docRef.id})`, 'ok');
+            log('\n══════════════════════════════', 'info-log');
+            log('✓ Selesai! Lokasi sudah tersimpan.', 'ok');
+            log('Coba absen di aplikasi sekarang.', 'info-log');
+
+            btn.textContent = 'Selesai ✓';
+            btn.style.background = '#16a34a';
+          } catch (err) {
+            log(`✗ ERROR: ${err.message}`, 'err');
+            btn.disabled = false;
+            btn.textContent = 'Deteksi GPS & Buat Lokasi';
+          }
+        },
+        (error) => {
+          log(`✗ GPS Error: ${error.message}`, 'err');
+          if (error.code === error.PERMISSION_DENIED) {
+            log('  → Izin GPS ditolak. Aktifkan di pengaturan browser.', 'warn');
+          }
+          btn.disabled = false;
+          btn.textContent = 'Deteksi GPS & Buat Lokasi';
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    };
+  </script>
+</body>
+</html>

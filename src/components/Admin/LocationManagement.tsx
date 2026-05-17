@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  MapPin, Plus, Search, Trash2, Edit3, Navigation, 
+  MapPin, Plus, Trash2, Edit3, Navigation, 
   ShieldCheck, ShieldAlert, Layers, Map as MapIcon,
-  Crosshair, Save, X, Info
+  Crosshair, Save, X
 } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Popup, Polygon as LeafletPolygon, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polygon as LeafletPolygon, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import 'leaflet/dist/leaflet.css';
 
 // Fix default marker icon
@@ -18,6 +18,36 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-shadow.png',
 });
+
+// Numbered marker icon factory
+function makeNumberedIcon(number: number) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="background:#2563eb;color:white;width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"><span style="transform:rotate(45deg);font-size:11px;font-weight:bold">${number}</span></div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 28],
+    popupAnchor: [0, -30],
+  });
+}
+
+// Recenter map when center changes
+function MapRecenter({ center }: { center: [number, number] }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, map.getZoom());
+  }, [center[0], center[1]]);
+  return null;
+}
+
+// Map click handler — uses ref to always have latest formData
+function MapClickHandler({ onMapClick }: { onMapClick: (lat: string, lng: string) => void }) {
+  useMapEvents({
+    click: (e) => {
+      onMapClick(e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6));
+    },
+  });
+  return null;
+}
 
 export function LocationManagement() {
   const [locations, setLocations] = useState<any[]>([]);
@@ -30,34 +60,30 @@ export function LocationManagement() {
     longitude: '',
     radius: '100',
     type: 'OFFICE',
-    points: [{ lat: '', lng: '' }]
+    points: [] as { lat: string; lng: string }[]
   });
 
-  const mapCenter = (() => {
-    const validPoint = (formData.points || []).find((p: any) => p.lat !== '' && p.lng !== '');
-    if (validPoint) {
-      return { lat: parseFloat(validPoint.lat), lng: parseFloat(validPoint.lng) };
-    }
-    return { lat: 3.5952, lng: 98.6722 };
+  // Ref so MapClickHandler always has latest formData without re-mounting
+  const formDataRef = useRef(formData);
+  useEffect(() => { formDataRef.current = formData; }, [formData]);
+
+  const handleMapClick = (lat: string, lng: string) => {
+    const current = formDataRef.current;
+    setFormData({
+      ...current,
+      points: [...current.points, { lat, lng }],
+    });
+  };
+
+  const mapCenter: [number, number] = (() => {
+    const validPoint = formData.points.find(p => p.lat !== '' && p.lng !== '');
+    if (validPoint) return [parseFloat(validPoint.lat), parseFloat(validPoint.lng)];
+    return [3.5952, 98.6722];
   })();
 
-  const polygonPath = (formData.points || [])
-    .filter((p: any) => p.lat !== '' && p.lng !== '')
-    .map((p: any) => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }));
-
-  // Map Click Handler Component
-  const MapClickHandler = ({ formData, setFormData }: any) => {
-    useMapEvents({
-      click: (e) => {
-        const { lat, lng } = e.latlng;
-        setFormData({
-          ...formData,
-          points: [...(formData.points || []), { lat: lat.toFixed(6), lng: lng.toFixed(6) }]
-        });
-      },
-    });
-    return null;
-  };
+  const polygonPath = formData.points
+    .filter(p => p.lat !== '' && p.lng !== '')
+    .map(p => [parseFloat(p.lat), parseFloat(p.lng)] as [number, number]);
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -95,7 +121,7 @@ export function LocationManagement() {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', address: '', latitude: '', longitude: '', radius: '100', type: 'OFFICE', points: [{ lat: '', lng: '' }] });
+    setFormData({ name: '', address: '', latitude: '', longitude: '', radius: '100', type: 'OFFICE', points: [] });
     setEditingLoc(null);
   };
 
@@ -251,7 +277,7 @@ export function LocationManagement() {
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
-               className="bg-white rounded-[2.5rem] w-full max-w-xl shadow-2xl overflow-hidden"
+               className="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
              >
                 <form onSubmit={handleSubmit} className="p-10 space-y-8">
                    <div className="flex justify-between items-center">
@@ -283,157 +309,103 @@ export function LocationManagement() {
                          />
                       </div>
 
-                      <div className="space-y-4 pt-4 border-t border-slate-100">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Area Bangunan</p>
-                            <p className="text-[9px] text-slate-500 mt-1">Klik peta untuk menambahkan titik sudut area bangunan. Titik minimal 3 untuk polygon.</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, points: [{ lat: '', lng: '' }] })}
-                            className="text-[9px] font-bold uppercase text-blue-600 hover:underline"
-                          >
-                            Reset Area
-                          </button>
-                        </div>
-                        {hasMapKey ? (
-                          <div className="h-72 rounded-[2rem] overflow-hidden border border-slate-200">
-                            <MapContainer 
-                              center={[mapCenter.lat, mapCenter.lng]}
-                              zoom={17}
-                              style={{ width: '100%', height: '100%' }}
-                              className="leaflet-container"
-                            >
-                              <TileLayer
-                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                              />
-                              
-                              {/* Polygon dari points */}
-                              {polygonPath.length >= 3 && (
-                                <LeafletPolygon 
-                                  positions={polygonPath.map((p: any) => [p.lat, p.lng])}
-                                  color="#2563eb"
-                                  fillColor="#2563eb"
-                                  fillOpacity={0.18}
-                                  weight={3}
-                                />
-                              )}
-                              
-                              {/* Markers untuk setiap point */}
-                              {polygonPath.map((point: any, index: number) => (
-                                <Marker
-                                  key={`point-${index}`}
-                                  position={[point.lat, point.lng]}
-                                  icon={L.icon({
-                                    iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCAzMiA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iNDgiIHJ4PSI4IiBmaWxsPSIjMjU2M2ViIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPnt7aW5kZXh9fTwvdGV4dD48L3N2Zz4='.replace('{{index}}', (index+1).toString()),
-                                    iconSize: [32, 48],
-                                    iconAnchor: [16, 48],
-                                    popupAnchor: [0, -48]
-                                  })}
-                                >
-                                  <Popup>
-                                    <div className="text-xs">
-                                      <p className="font-bold">Titik {index + 1}</p>
-                                      <p className="text-[10px] text-slate-500">{point.lat.toFixed(6)}, {point.lng.toFixed(6)}</p>
-                                    </div>
-                                  </Popup>
-                                </Marker>
-                              ))}
-                              
-                              <MapClickHandler formData={formData} setFormData={setFormData} />
-                            </MapContainer>
-                          </div>
-                        ) : (
-                          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                            Map tidak tersedia. Pastikan browser Anda support Leaflet.
-                          </div>
-                        )}
-
-                        <div className="space-y-4">
-                          {(formData.points || []).map((point: any, index: number) => (
-                            <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
-                              <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Latitude titik {index + 1}</label>
-                                <input
-                                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 px-4 text-xs font-bold"
-                                  placeholder="Latitude"
-                                  value={point.lat}
-                                  onChange={e => updatePoint(index, 'lat', e.target.value)}
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Longitude titik {index + 1}</label>
-                                <input
-                                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 px-4 text-xs font-bold"
-                                  placeholder="Longitude"
-                                  value={point.lng}
-                                  onChange={e => updatePoint(index, 'lng', e.target.value)}
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => removePoint(index)}
-                                className="h-12 w-12 rounded-2xl bg-slate-100 text-slate-500 hover:text-red-600 transition-colors"
-                                title="Hapus titik"
-                              >
-                                <Trash2 className="h-5 w-5" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        <p className="text-[10px] text-slate-500 uppercase tracking-widest">Masukkan titik-titik batas area sesuai bentuk bangunannya. Titik minimal 3 untuk polygon.</p>
+                      {/* Quick GPS Button */}
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!navigator.geolocation) {
+                              alert('Browser tidak mendukung GPS');
+                              return;
+                            }
+                            navigator.geolocation.getCurrentPosition(
+                              (pos) => {
+                                setFormData({
+                                  ...formData,
+                                  latitude: pos.coords.latitude.toFixed(6),
+                                  longitude: pos.coords.longitude.toFixed(6),
+                                });
+                                alert(`GPS terdeteksi:\n${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`);
+                              },
+                              (err) => alert(`GPS Error: ${err.message}`)
+                            );
+                          }}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 text-xs font-bold hover:bg-blue-100 transition-colors"
+                        >
+                          <Crosshair className="h-4 w-4" />
+                          Deteksi GPS Saya
+                        </button>
+                        <p className="text-[9px] text-slate-400 uppercase tracking-wide">Atau isi manual di bawah</p>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-6">
-                         <div className="space-y-2">
-                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Latitude</label>
-                           <input 
-                             required={polygonPath.length === 0}
-                             className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 px-6 text-xs font-bold"
-                             placeholder="3.5952"
-                             value={formData.latitude}
-                             onChange={e => setFormData({...formData, latitude: e.target.value})}
-                           />
+                      {/* Map Area */}
+                      <div className="space-y-3">
+                         <div className="flex items-center justify-between">
+                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Area Geofence Tanah (Peta)</label>
+                           <div className="flex gap-3">
+                             <button type="button" onClick={() => {
+                               const pts = formData.points || [];
+                               setFormData({...formData, points: pts.slice(0, -1)});
+                             }} className="text-[9px] font-bold text-amber-600 hover:text-amber-700 uppercase tracking-widest flex items-center gap-1"><X className="h-3 w-3"/> Hapus Titik Terakhir</button>
+                             <button type="button" onClick={() => setFormData({...formData, points: []})} className="text-[9px] font-bold text-red-600 hover:text-red-700 uppercase tracking-widest flex items-center gap-1"><Trash2 className="h-3 w-3"/> Reset Peta</button>
+                           </div>
                          </div>
-                         <div className="space-y-2">
-                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Longitude</label>
-                           <input 
-                             required={polygonPath.length === 0}
-                             className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 px-6 text-xs font-bold"
-                             placeholder="98.6722"
-                             value={formData.longitude}
-                             onChange={e => setFormData({...formData, longitude: e.target.value})}
-                           />
+                         <div className="h-72 w-full rounded-2xl overflow-hidden border border-slate-200 shadow-inner relative z-0">
+                           <MapContainer center={mapCenter} zoom={18} className="h-full w-full">
+                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
+                             <MapRecenter center={mapCenter} />
+                             <MapClickHandler onMapClick={handleMapClick} />
+                             
+                             {formData.points.filter((p: any) => p.lat !== '' && p.lng !== '').map((p: any, i: number) => (
+                               <Marker key={i} position={[parseFloat(p.lat), parseFloat(p.lng)]} icon={makeNumberedIcon(i + 1)} />
+                             ))}
+                             
+                             {polygonPath.length >= 3 && (
+                               <LeafletPolygon positions={polygonPath} color="#2563eb" fillColor="#3b82f6" fillOpacity={0.2} weight={2} />
+                             )}
+
+                             {formData.latitude && formData.longitude && polygonPath.length < 3 && (
+                               <Marker position={[parseFloat(formData.latitude), parseFloat(formData.longitude)]}>
+                                 <Popup>Pusat Area</Popup>
+                               </Marker>
+                             )}
+                           </MapContainer>
                          </div>
+                         <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest px-2 mt-2">
+                           <span className="text-blue-600">Instruksi:</span> Klik pada peta minimal 3 kali untuk membentuk batas tanah (polygon) lokasi absensi.
+                         </p>
                       </div>
 
-                      <div className="space-y-2">
-                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Radius Geofence (Meter)</label>
-                         <div className="flex items-center gap-4">
-                            <input 
-                              type="range"
-                              min="50"
-                              max="1000"
-                              step="50"
-                              className="flex-1 accent-blue-600"
-                              value={formData.radius}
-                              onChange={e => setFormData({...formData, radius: e.target.value})}
-                            />
-                            <span className="w-20 text-center rounded-xl bg-blue-50 py-2 text-xs font-black text-blue-600 border border-blue-100">{formData.radius}m</span>
-                         </div>
-                      </div>
-                   </div>
+                      {/* Manual Settings Removed for Simplicity */}
+                    </div>
 
-                   <button className="w-full rounded-[1.5rem] bg-slate-900 py-5 text-xs font-black uppercase text-white shadow-2xl shadow-slate-200 hover:bg-slate-800 transition-all flex items-center justify-center gap-3">
+                   <button 
+                     type="button"
+                     onClick={(e) => {
+                       if (formData.points.length < 3) {
+                         alert('Mohon gambar minimal 3 titik pada peta untuk membentuk area absensi!');
+                         return;
+                       }
+                       // Set dummy lat/lng from first point so DB isn't empty
+                       const firstPoint = formData.points[0];
+                       const syntheticEvent = { ...e, preventDefault: () => {} } as React.FormEvent;
+                       setFormData({
+                         ...formData, 
+                         latitude: firstPoint.lat, 
+                         longitude: firstPoint.lng,
+                         radius: '100'
+                       });
+                       handleSubmit(syntheticEvent);
+                     }}
+                     className="w-full rounded-[1.5rem] bg-slate-900 py-5 text-xs font-black uppercase text-white shadow-2xl shadow-slate-200 hover:bg-slate-800 transition-all flex items-center justify-center gap-3"
+                   >
                       <Save className="h-5 w-5" /> Simpan Konfigurasi
                    </button>
-                </form>
-             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+                 </form>
+              </motion.div>
+           </div>
+         )}
+       </AnimatePresence>
+     </div>
+   );
+ }

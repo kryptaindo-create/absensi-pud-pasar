@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export function AccessManagement() {
   const [users, setUsers] = useState<any[]>([]);
