@@ -58,20 +58,22 @@ export default function DashboardScreen() {
 
       // Fetch User Profile for Sisa Cuti
       if (email) {
-        getDocs(query(collection(db, 'users'), where('email', '==', email))).then(snap => {
-          if (!snap.empty) setUserData({ id: snap.docs[0].id, ...snap.docs[0].data() });
-        });
+        getDocs(query(collection(db, 'users'), where('email', '==', email)))
+          .then(snap => {
+            if (!snap.empty) setUserData({ id: snap.docs[0].id, ...snap.docs[0].data() });
+          })
+          .catch(err => console.log("Users Query Error:", err));
       }
 
       // Fetch Attendances
       const unsubAtt = onSnapshot(query(collection(db, 'attendance'), where('userId', '==', uid)), (snap) => {
         setAttendances(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      });
+      }, (err) => console.log("Attendance Query Error:", err));
 
       // Fetch Submissions
       const unsubSub = onSnapshot(query(collection(db, 'submissions'), where('userId', '==', uid)), (snap) => {
         setSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      });
+      }, (err) => console.log("Submissions Query Error:", err));
 
       return () => {
         if (subscription) subscription.remove();
