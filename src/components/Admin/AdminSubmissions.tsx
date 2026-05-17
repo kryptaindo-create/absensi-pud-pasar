@@ -35,8 +35,8 @@ export function AdminSubmissions({ profile }: { profile: any }) {
             userId: sub.userId,
             type: 'WARNING',
             title: '⚠️ Peringatan Berkas Fisik',
-            message: `Pengajuan ${sub.title} Anda telah disetujui. WAJIB menyerahkan/mengupload surat bukti fisik/asli paling lambat 2 HARI setelah tanggal izin berakhir ke bagian HRD. Jika tidak, izin akan dibatalkan dan dianggap Alpa.`,
-            senderId: 'Sistem HRD PUD Pasar',
+            message: `Pengajuan ${sub.title} Anda telah disetujui. WAJIB menyerahkan/mengupload surat bukti fisik/asli paling lambat 2 HARI setelah tanggal izin berakhir ke bagian Kepegawaian. Jika tidak, izin akan dibatalkan dan dianggap Alpa.`,
+            senderId: 'Sistem Kepegawaian PUD Pasar',
             timestamp: serverTimestamp(),
             isRead: false
           });
