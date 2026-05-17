@@ -16,11 +16,19 @@ export default function SubmissionsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedType, setSelectedType] = useState<any>(null);
   const [keterangan, setKeterangan] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const openForm = (jenis: any) => {
     setSelectedType(jenis);
     setKeterangan('');
+    setStartDate('');
+    setEndDate('');
+    setStartTime('');
+    setEndTime('');
     setModalVisible(true);
   };
 
@@ -38,6 +46,10 @@ export default function SubmissionsScreen() {
         type: selectedType.id,
         title: selectedType.title,
         description: keterangan,
+        startDate: startDate || null,
+        endDate: endDate || null,
+        startTime: startTime || null,
+        endTime: endTime || null,
         status: 'PENDING', // PENDING, APPROVED, REJECTED
         timestamp: serverTimestamp(),
       });
@@ -98,6 +110,52 @@ export default function SubmissionsScreen() {
               </View>
             )}
 
+            {selectedType && (selectedType.id === 'SAKIT' || selectedType.id === 'CUTI') && (
+              <View style={styles.row}>
+                <View style={styles.halfCol}>
+                  <Text style={styles.label}>Mulai Tanggal</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Tgl/Bln/Thn"
+                    value={startDate}
+                    onChangeText={setStartDate}
+                  />
+                </View>
+                <View style={styles.halfCol}>
+                  <Text style={styles.label}>Sampai Tanggal</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Tgl/Bln/Thn"
+                    value={endDate}
+                    onChangeText={setEndDate}
+                  />
+                </View>
+              </View>
+            )}
+
+            {selectedType && selectedType.id === 'KELUAR_KANTOR' && (
+              <View style={styles.row}>
+                <View style={styles.halfCol}>
+                  <Text style={styles.label}>Dari Jam</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Contoh: 09:00"
+                    value={startTime}
+                    onChangeText={setStartTime}
+                  />
+                </View>
+                <View style={styles.halfCol}>
+                  <Text style={styles.label}>Sampai Jam</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Contoh: 12:00"
+                    value={endTime}
+                    onChangeText={setEndTime}
+                  />
+                </View>
+              </View>
+            )}
+
             <Text style={styles.label}>Keterangan / Alasan Lengkap</Text>
             <TextInput
               style={styles.textArea}
@@ -148,6 +206,9 @@ const styles = StyleSheet.create({
   typeBadge: { alignSelf: 'flex-start', backgroundColor: '#eff6ff', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginBottom: 20 },
   typeBadgeText: { color: '#2563eb', fontWeight: 'bold' },
   label: { fontSize: 14, fontWeight: 'bold', color: '#334155', marginBottom: 8 },
+  input: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 16, fontSize: 15, color: '#334155', marginBottom: 16 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  halfCol: { width: '48%' },
   textArea: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 16, fontSize: 15, color: '#334155', height: 120, marginBottom: 20 },
   uploadBox: { borderWidth: 2, borderColor: '#e2e8f0', borderStyle: 'dashed', borderRadius: 16, padding: 30, alignItems: 'center', marginBottom: 24, backgroundColor: '#f8fafc' },
   uploadText: { marginTop: 12, fontSize: 15, fontWeight: 'bold', color: '#475569' },

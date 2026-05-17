@@ -78,7 +78,20 @@ export function AdminSubmissions({ profile }: { profile: any }) {
                 <div className="inline-block px-2 py-1 bg-blue-50 text-blue-700 rounded-md text-xs font-bold mb-2">
                   {sub.title}
                 </div>
-                <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                
+                {sub.startDate && sub.endDate && (
+                  <div className="text-xs font-bold text-slate-700 mb-2">
+                    📅 Tanggal Izin: <span className="text-blue-600">{sub.startDate}</span> s/d <span className="text-blue-600">{sub.endDate}</span>
+                  </div>
+                )}
+                
+                {sub.startTime && sub.endTime && (
+                  <div className="text-xs font-bold text-slate-700 mb-2">
+                    ⏰ Jam Keluar: <span className="text-blue-600">{sub.startTime}</span> s/d <span className="text-blue-600">{sub.endTime}</span>
+                  </div>
+                )}
+
+                <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 mt-1">
                   "{sub.description}"
                 </p>
                 <div className="mt-2 text-xs text-slate-400 font-medium">
