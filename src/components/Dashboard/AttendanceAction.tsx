@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, MapPin, CheckCircle2, RefreshCcw, Navigation, AlertCircle } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { addDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, getDocs, getDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 // Cek apakah titik (lat, lng) berada di dalam polygon menggunakan ray-casting
 function isPointInPolygon(lat: number, lng: number, polygon: { lat: number; lng: number }[]): boolean {
@@ -123,6 +123,42 @@ export function AttendanceAction({ profile }: { profile: any }) {
     // Simulate Face Recognition delay
     setTimeout(async () => {
       try {
+        let finalStatus = 'HADIR'; // Default
+        
+        // 1. Ambil detail shift karyawan (jika ada)
+        if (profile.shiftId) {
+          try {
+            const shiftDoc = await getDoc(doc(db, 'shifts', profile.shiftId));
+            if (shiftDoc.exists()) {
+              const shiftData = shiftDoc.data();
+              const startTime = shiftData.startTime || '08:00';
+              const tolerance = parseInt(shiftData.lateTolerance || '15');
+              
+              // Hitung waktu saat ini dalam menit (sejak tengah malam)
+              const now = new Date();
+              const currentMinutes = now.getHours() * 60 + now.getMinutes();
+              
+              // Hitung batas waktu masuk dalam menit
+              const [startHour, startMin] = startTime.split(':').map(Number);
+              const allowedMinutes = (startHour * 60) + startMin + tolerance;
+              
+              if (currentMinutes > allowedMinutes) {
+                finalStatus = 'LATE';
+              }
+            }
+          } catch (shiftErr) {
+            console.error("Gagal mengambil data shift:", shiftErr);
+          }
+        } else {
+          // Jika tidak ada shiftId, gunakan default 08:15 (08:00 + 15 menit)
+          const now = new Date();
+          const currentMinutes = now.getHours() * 60 + now.getMinutes();
+          const defaultAllowedMinutes = (8 * 60) + 15; // 08:15
+          if (currentMinutes > defaultAllowedMinutes) {
+            finalStatus = 'LATE';
+          }
+        }
+
         await addDoc(collection(db, 'attendance'), {
           userId: profile.uid,
           date: new Date().toISOString().split('T')[0],
@@ -133,7 +169,7 @@ export function AttendanceAction({ profile }: { profile: any }) {
             verified: true,
             type: 'Regular'
           },
-          status: 'Present'
+          status: finalStatus
         });
         
         // Stop camera stream
