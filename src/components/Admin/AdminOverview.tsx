@@ -8,49 +8,81 @@ import {
   Calendar, AlertCircle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 export function AdminOverview() {
+  const [realStats, setRealStats] = useState({
+    totalPegawai: 0,
+    masukHariIni: 0,
+    izinSakit: 0,
+    cuti: 0,
+    alpa: 0
+  });
+
+  useEffect(() => {
+    // 1. Ambil Total Pegawai (Role Karyawan biasa)
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+      const users = snap.docs.filter(doc => doc.data().role !== 'SuperMaster');
+      const totalUsers = users.length;
+      
+      // 2. Ambil Absen Hari Ini
+      const today = new Date().toISOString().split('T')[0];
+      const qAbsen = query(collection(db, 'attendance'), where('date', '==', today));
+      
+      const unsubAbsen = onSnapshot(qAbsen, (absenSnap) => {
+        let hadirCount = 0;
+        let izinSakitCount = 0;
+        let cutiCount = 0;
+        
+        absenSnap.forEach(doc => {
+          const status = doc.data().status;
+          if (status === 'HADIR' || status === 'LATE') hadirCount++;
+          else if (status === 'IZIN' || status === 'SAKIT') izinSakitCount++;
+          else if (status === 'CUTI') cutiCount++;
+        });
+
+        // Alpa = Total Pegawai yang belum absen (dikurangi yang sudah ada status)
+        const alpaCount = Math.max(0, totalUsers - (hadirCount + izinSakitCount + cutiCount));
+
+        setRealStats({
+          totalPegawai: totalUsers,
+          masukHariIni: hadirCount,
+          izinSakit: izinSakitCount,
+          cuti: cutiCount,
+          alpa: alpaCount
+        });
+      });
+      
+      return () => unsubAbsen();
+    });
+
+    return () => unsubUsers();
+  }, []);
+
   const stats = [
-    { label: 'Total Pegawai', value: '1,248', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Masuk Hari Ini', value: '1,102', icon: UserCheck, color: 'text-green-600', bg: 'bg-green-50' },
-    { label: 'Izin / Sakit', value: '42', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'Cuti Tahunan', value: '18', icon: Calendar, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'Alpa / Mangkir', value: '15', icon: UserX, color: 'text-red-600', bg: 'bg-red-50' },
-    { label: 'Belum Pulang', value: '71', icon: AlertCircle, color: 'text-slate-600', bg: 'bg-slate-50' },
-    { label: 'Di Luar Area', value: '86', icon: Map, color: 'text-orange-600', bg: 'bg-orange-50' },
-    { label: 'SPT Luar', value: '12', icon: Briefcase, color: 'text-cyan-600', bg: 'bg-cyan-50' },
+    { label: 'Total Pegawai', value: realStats.totalPegawai.toString(), icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Masuk Hari Ini', value: realStats.masukHariIni.toString(), icon: UserCheck, color: 'text-green-600', bg: 'bg-green-50' },
+    { label: 'Izin / Sakit', value: realStats.izinSakit.toString(), icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'Cuti Tahunan', value: realStats.cuti.toString(), icon: Calendar, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Alpa / Mangkir', value: realStats.alpa.toString(), icon: UserX, color: 'text-red-600', bg: 'bg-red-50' },
+    { label: 'Belum Pulang', value: '0', icon: AlertCircle, color: 'text-slate-600', bg: 'bg-slate-50' },
+    { label: 'Di Luar Area', value: '0', icon: Map, color: 'text-orange-600', bg: 'bg-orange-50' },
+    { label: 'SPT Luar', value: '0', icon: Briefcase, color: 'text-cyan-600', bg: 'bg-cyan-50' },
   ];
 
-  const attendanceData = [
-    { name: 'Sen', mas: 1102, izn: 42, cut: 18, alp: 15 },
-    { name: 'Sel', mas: 1080, izn: 50, cut: 20, alp: 10 },
-    { name: 'Rab', mas: 1120, izn: 35, cut: 15, alp: 20 },
-    { name: 'Kam', mas: 1050, izn: 60, cut: 22, alp: 30 },
-    { name: 'Jum', mas: 1110, izn: 40, cut: 18, alp: 12 },
-  ];
+  const attendanceData = []; // Kosongkan sementara sampai ada history asli
 
-  const rankingEmployees = [
-    { name: 'Ahmad Subarjo', unit: 'Unit Petisah', score: 99.8 },
-    { name: 'Siti Aminah', unit: 'Pusat', score: 99.5 },
-    { name: 'Budi Hartono', unit: 'Unit Central', score: 99.2 },
-    { name: 'Rini Sastrowijoyo', unit: 'Unit Aksara', score: 98.9 },
-    { name: 'Dedi Kurniawan', unit: 'Cabang 1', score: 98.5 },
-  ];
-
-  const rankingUnits = [
-    { name: 'Unit Petisah', discipline: '98.5%' },
-    { name: 'Unit Central', discipline: '97.2%' },
-    { name: 'Kantor Pusat', discipline: '96.8%' },
-    { name: 'Unit Aksara', discipline: '95.5%' },
-    { name: 'Cabang 2', discipline: '94.8%' },
-  ];
+  const rankingEmployees: any[] = []; // Kosongkan dummy data
+  const rankingUnits: any[] = []; // Kosongkan dummy data
 
   return (
     <div className="space-y-8">
        {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-           <h2 className="text-xl font-black tracking-tight text-slate-900 uppercase">1. Dashboard Utama</h2>
+           <h2 className="text-lg lg:text-xl font-black tracking-tight text-slate-900 uppercase">1. Dashboard Utama</h2>
            <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest leading-none">Pusat Kendali Monitoring Real-Time</p>
         </div>
         <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
@@ -61,7 +93,7 @@ export function AdminOverview() {
       </div>
 
       {/* Grid Status Utama */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
          {stats.map((s, i) => (
            <motion.div 
              key={s.label}
@@ -117,8 +149,16 @@ export function AdminOverview() {
                         cursor={{ fill: '#f8fafc' }}
                         contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                      />
-                     <Bar dataKey="mas" fill="#2563eb" radius={[6, 6, 0, 0]} barSize={25} />
-                     <Bar dataKey="alp" fill="#f87171" radius={[6, 6, 0, 0]} barSize={20} />
+                     {attendanceData.length > 0 ? (
+                       <>
+                         <Bar dataKey="mas" fill="#2563eb" radius={[6, 6, 0, 0]} barSize={25} />
+                         <Bar dataKey="alp" fill="#f87171" radius={[6, 6, 0, 0]} barSize={20} />
+                       </>
+                     ) : (
+                       <text x="50%" y="50%" textAnchor="middle" fill="#94a3b8" fontSize="12" fontWeight="bold">
+                         Belum ada data grafik minggu ini
+                       </text>
+                     )}
                   </BarChart>
                </ResponsiveContainer>
             </div>
@@ -133,7 +173,7 @@ export function AdminOverview() {
                   <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-900">5 Rank Karyawan Terdisiplin</h3>
                </div>
                <div className="space-y-4">
-                  {rankingEmployees.map((emp, i) => (
+                  {rankingEmployees.length > 0 ? rankingEmployees.map((emp, i) => (
                     <div key={i} className="flex items-center gap-3">
                        <div className="h-7 w-7 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400">
                           {i + 1}
@@ -146,7 +186,9 @@ export function AdminOverview() {
                           {emp.score}
                        </div>
                     </div>
-                  ))}
+                  )) : (
+                    <p className="text-[10px] font-bold text-slate-400 text-center py-4">Belum ada data ranking</p>
+                  )}
                </div>
             </div>
 
@@ -157,7 +199,7 @@ export function AdminOverview() {
                   <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-900">5 Rank Unit Terdisiplin</h3>
                </div>
                <div className="space-y-4">
-                  {rankingUnits.map((unit, i) => (
+                  {rankingUnits.length > 0 ? rankingUnits.map((unit, i) => (
                     <div key={i} className="flex items-center gap-3">
                        <div className="h-7 w-7 rounded-lg bg-blue-50 flex items-center justify-center text-[10px] font-black text-blue-600">
                           {i + 1}
@@ -169,15 +211,17 @@ export function AdminOverview() {
                           {unit.discipline}
                        </div>
                     </div>
-                  ))}
+                  )) : (
+                    <p className="text-[10px] font-bold text-slate-400 text-center py-4">Belum ada data ranking</p>
+                  )}
                </div>
             </div>
          </div>
       </div>
 
        {/* Geofence Info Section */}
-       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-blue-600 rounded-[2rem] p-8 text-white relative overflow-hidden group">
+       <div className="grid grid-cols-1 gap-6">
+          <div className="bg-blue-600 rounded-[2rem] p-6 lg:p-8 text-white relative overflow-hidden group">
              <div className="absolute top-0 right-0 p-8 opacity-10 blur-sm group-hover:scale-110 transition-transform">
                 <MapPin className="h-48 w-48" />
              </div>

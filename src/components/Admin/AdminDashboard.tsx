@@ -114,7 +114,7 @@ export function AdminDashboard({ profile }: { profile: any }) {
           </button>
         </div>
 
-        <div className="mx-auto max-w-7xl p-6 lg:p-10">
+        <div className="mx-auto max-w-7xl p-4 lg:p-10 pb-24">
           <AnimatePresence mode="wait">
              <motion.div
                key={activeTab}
