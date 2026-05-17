@@ -5,8 +5,9 @@ import { auth, db, handleFirestoreError, OperationType, signInWithGoogle } from 
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UserPlus, ArrowRight, Camera, CheckCircle2, ChevronLeft,
-  Calendar, Mail, Lock, User, Chrome, Eye, EyeOff, AlertCircle
+  Calendar, Mail, Lock, User, Chrome, Eye, EyeOff, AlertCircle, ScanFace
 } from 'lucide-react';
+import { FaceEnrollment } from '../Dashboard/FaceEnrollment';
 
 function getRegisterErrorMessage(code: string): string {
   switch (code) {
@@ -36,7 +37,8 @@ export function Register({ onSwitch }: { onSwitch: () => void }) {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [faces, setFaces] = useState<{ front?: string; left?: string; right?: string }>({});
+  const [faceDescriptor, setFaceDescriptor] = useState<number[] | null>(null);
+  const [showFaceEnrollment, setShowFaceEnrollment] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isGoogleUser, setIsGoogleUser] = useState(false);
@@ -98,8 +100,8 @@ export function Register({ onSwitch }: { onSwitch: () => void }) {
   };
 
   const handleRegister = async () => {
-    if (!faces.front || !faces.left || !faces.right) {
-      setError('Lengkapi semua foto wajah (depan, kiri, kanan).');
+    if (!faceDescriptor) {
+      setError('Silakan lakukan Scan Wajah Biometrik terlebih dahulu.');
       return;
     }
     setLoading(true);
@@ -122,7 +124,7 @@ export function Register({ onSwitch }: { onSwitch: () => void }) {
         dob: form.dob,
         role: 'Employee',
         status: 'Pending',
-        faceEnrollment: faces,
+        faceDescriptor: faceDescriptor,
         createdAt: new Date().toISOString(),
       });
       // App.tsx akan otomatis redirect ke halaman "Menunggu Persetujuan"
@@ -133,12 +135,7 @@ export function Register({ onSwitch }: { onSwitch: () => void }) {
     }
   };
 
-  const handleEnrollment = (pos: 'front' | 'left' | 'right') => {
-    setFaces({ ...faces, [pos]: 'captured_placeholder_url' });
-  };
 
-  const faceLabels = { front: 'Depan', left: 'Kiri', right: 'Kanan' };
-  const allFacesCaptured = faces.front && faces.left && faces.right;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12">
@@ -342,54 +339,39 @@ export function Register({ onSwitch }: { onSwitch: () => void }) {
                 <p className="mt-1.5 text-xs font-semibold text-slate-400 uppercase tracking-widest">Langkah 2 dari 2 — Foto Wajah</p>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                {(['front', 'left', 'right'] as const).map((pos) => (
-                  <button
-                    key={pos}
-                    type="button"
-                    onClick={() => handleEnrollment(pos)}
-                    className={`relative flex flex-col items-center justify-center aspect-[3/4] rounded-2xl border-2 border-dashed transition-all ${
-                      faces[pos]
-                        ? 'border-green-400 bg-green-50'
-                        : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300'
-                    }`}
-                  >
-                    {faces[pos] ? (
-                      <>
-                        <div className="h-9 w-9 rounded-full bg-green-100 flex items-center justify-center text-green-600">
-                          <CheckCircle2 className="h-5 w-5" />
-                        </div>
-                        <span className="mt-2 text-[9px] font-bold uppercase text-green-700 tracking-widest">Selesai</span>
-                      </>
-                    ) : (
-                      <>
-                        <Camera className="h-6 w-6 text-slate-400" />
-                        <span className="mt-2 text-[9px] font-bold uppercase text-slate-400 tracking-widest">
-                          {faceLabels[pos]}
-                        </span>
-                      </>
-                    )}
-                  </button>
-                ))}
+              <div className="flex justify-center py-6">
+                <button
+                  type="button"
+                  onClick={() => setShowFaceEnrollment(true)}
+                  className={`relative flex flex-col items-center justify-center w-full max-w-[240px] aspect-square rounded-3xl border-2 border-dashed transition-all ${
+                    faceDescriptor
+                      ? 'border-green-400 bg-green-50 shadow-lg shadow-green-100'
+                      : 'border-blue-300 bg-blue-50/50 hover:bg-blue-50 hover:border-blue-400 shadow-xl shadow-blue-100/50'
+                  }`}
+                >
+                  {faceDescriptor ? (
+                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex flex-col items-center">
+                      <div className="h-16 w-16 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg shadow-green-200 mb-4">
+                        <CheckCircle2 className="h-8 w-8" />
+                      </div>
+                      <span className="text-sm font-black uppercase text-green-700 tracking-widest">Wajah Terkunci</span>
+                    </motion.div>
+                  ) : (
+                    <div className="flex flex-col items-center text-blue-600">
+                      <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center mb-4">
+                        <ScanFace className="h-8 w-8" />
+                      </div>
+                      <span className="text-sm font-black uppercase tracking-widest">Scan Wajah AI</span>
+                      <span className="text-[10px] font-bold text-blue-400 mt-2 uppercase tracking-widest">Klik Untuk Memulai</span>
+                    </div>
+                  )}
+                </button>
               </div>
 
               <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
                 <p className="text-xs text-blue-700 font-medium text-center leading-relaxed">
                   Pastikan pencahayaan terang dan wajah terlihat jelas tanpa masker atau kacamata hitam.
                 </p>
-              </div>
-
-              {/* Progress indicator */}
-              <div className="flex items-center justify-center gap-2">
-                {(['front', 'left', 'right'] as const).map((pos) => (
-                  <div
-                    key={pos}
-                    className={`h-1.5 w-8 rounded-full transition-all ${faces[pos] ? 'bg-green-500' : 'bg-slate-200'}`}
-                  />
-                ))}
-                <span className="ml-2 text-[10px] font-bold text-slate-400 uppercase tracking-wide">
-                  {Object.values(faces).filter(Boolean).length}/3
-                </span>
               </div>
 
               <AnimatePresence>
@@ -408,7 +390,7 @@ export function Register({ onSwitch }: { onSwitch: () => void }) {
 
               <button
                 type="button"
-                disabled={loading || !allFacesCaptured}
+                disabled={loading || !faceDescriptor}
                 onClick={handleRegister}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-sm font-bold text-white uppercase tracking-widest hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-blue-600/20"
               >
@@ -429,6 +411,13 @@ export function Register({ onSwitch }: { onSwitch: () => void }) {
           )}
         </AnimatePresence>
       </motion.div>
+
+      {showFaceEnrollment && (
+        <FaceEnrollment
+          onClose={() => setShowFaceEnrollment(false)}
+          onEnroll={(descriptor) => setFaceDescriptor(descriptor)}
+        />
+      )}
     </div>
   );
 }

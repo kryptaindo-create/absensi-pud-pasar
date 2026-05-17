@@ -6,11 +6,13 @@ import { db } from '../../lib/firebase';
 import { motion } from 'framer-motion';
 
 interface FaceEnrollmentProps {
-  profile: any;
-  onClose: () => void;
+  profile?: any;
+  onClose?: () => void;
+  onEnroll?: (descriptor: number[]) => void;
+  isMandatory?: boolean;
 }
 
-export function FaceEnrollment({ profile, onClose }: FaceEnrollmentProps) {
+export function FaceEnrollment({ profile, onClose, onEnroll, isMandatory }: FaceEnrollmentProps) {
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
   const [faceDescriptor, setFaceDescriptor] = useState<Float32Array | null>(null);
@@ -115,16 +117,25 @@ export function FaceEnrollment({ profile, onClose }: FaceEnrollmentProps) {
     
     try {
       // Convert Float32Array to standard Array for Firestore
-      const descriptorArray = Array.from(faceDescriptor);
+      const descriptorArray = Array.from(faceDescriptor) as number[];
       
-      await updateDoc(doc(db, 'users', profile.uid || profile.id), {
-        faceDescriptor: descriptorArray
-      });
-      
-      setSuccess(true);
-      setTimeout(() => {
-        onClose();
-      }, 2000);
+      if (onEnroll) {
+        // Jika ada callback, kirim data ke parent (contoh: Register.tsx)
+        onEnroll(descriptorArray);
+        setSuccess(true);
+        setTimeout(() => {
+          if (onClose) onClose();
+        }, 2000);
+      } else if (profile) {
+        // Jika profile ada (contoh: dari Dashboard), simpan langsung ke Firestore
+        await updateDoc(doc(db, 'users', profile.uid || profile.id), {
+          faceDescriptor: descriptorArray
+        });
+        setSuccess(true);
+        setTimeout(() => {
+          if (onClose) onClose();
+        }, 2000);
+      }
     } catch (err) {
       console.error("Gagal menyimpan data wajah:", err);
       setError("Gagal menyimpan data biometrik ke database.");
@@ -143,9 +154,11 @@ export function FaceEnrollment({ profile, onClose }: FaceEnrollmentProps) {
             <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Pendaftaran Wajah</h2>
             <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Kunci Keamanan Biometrik</p>
           </div>
-          <button onClick={onClose} className="h-10 w-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors">
-            <X className="h-5 w-5" />
-          </button>
+          {!isMandatory && onClose && (
+            <button onClick={onClose} className="h-10 w-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors">
+              <X className="h-5 w-5" />
+            </button>
+          )}
         </div>
 
         <div className="flex-1 relative bg-black flex flex-col justify-center overflow-hidden min-h-[300px]">

@@ -143,7 +143,6 @@ function ProfileView({ profile }: { profile: any }) {
             </span>
           </div>
         </div>
-        </div>
       </div>
 
       <div className="theme-card p-6 bg-white border border-blue-100">
