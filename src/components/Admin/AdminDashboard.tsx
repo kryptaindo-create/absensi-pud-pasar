@@ -4,7 +4,7 @@ import {
   Users, Calendar, FileText, Wallet, Settings, ShieldCheck, 
   Menu, X, LayoutDashboard, Database, ClipboardCheck, History,
   MapPin, Clock, ShieldAlert, CheckSquare, ListTodo, Navigation,
-  Bell, Lock, Activity
+  Bell, Lock, Activity, FileCheck, Send
 } from 'lucide-react';
 import { auth } from '../../lib/firebase';
 import { UserList } from './UserList';
@@ -21,6 +21,8 @@ import { AccessManagement } from './AccessManagement';
 import { LiveTracking } from './LiveTracking';
 import { ShiftManagement } from './ShiftManagement';
 import { UnitStats } from './UnitStats';
+import { AdminSubmissions } from './AdminSubmissions';
+import { AdminInbox } from './AdminInbox';
 
 export function AdminDashboard({ profile }: { profile: any }) {
   const [activeTab, setActiveTab] = useState('overview');
@@ -34,12 +36,14 @@ export function AdminDashboard({ profile }: { profile: any }) {
     { id: 'spt', label: '5. SPT & Informasi', icon: FileText },
     { id: 'fraud', label: '6. Analisis Fraud', icon: ShieldAlert },
     { id: 'approvals', label: '7. Antrian Persetujuan', icon: CheckSquare },
-    { id: 'shifts', label: '8. Manajemen Shift', icon: Clock },
-    { id: 'locations', label: '9. Lokasi Kerja', icon: MapPin },
-    { id: 'tracking', label: '10. Lacak Lokasi', icon: Navigation },
-    { id: 'payroll', label: '11. Payroll Gaji', icon: Wallet },
-    { id: 'access', label: '12. Manajemen Akses', icon: Lock, hidden: profile.role !== 'SuperMaster' },
-    { id: 'audit', label: '13. Audit Log', icon: History, hidden: profile.role !== 'SuperMaster' },
+    { id: 'employee_submissions', label: '8. Pengajuan Karyawan', icon: FileCheck },
+    { id: 'admin_inbox', label: '9. Kirim SP & Pesan', icon: Send },
+    { id: 'shifts', label: '10. Manajemen Shift', icon: Clock },
+    { id: 'locations', label: '11. Lokasi Kerja', icon: MapPin },
+    { id: 'tracking', label: '12. Lacak Lokasi', icon: Navigation },
+    { id: 'payroll', label: '13. Payroll Gaji', icon: Wallet },
+    { id: 'access', label: '14. Manajemen Akses', icon: Lock, hidden: profile.role !== 'SuperMaster' },
+    { id: 'audit', label: '15. Audit Log', icon: History, hidden: profile.role !== 'SuperMaster' },
   ];
 
   return (
@@ -131,6 +135,8 @@ export function AdminDashboard({ profile }: { profile: any }) {
                 {activeTab === 'spt' && <SptManagement />}
                 {activeTab === 'fraud' && <FraudAnalysis />}
                 {activeTab === 'approvals' && <ApprovalQueue profile={profile} />}
+                {activeTab === 'employee_submissions' && <AdminSubmissions profile={profile} />}
+                {activeTab === 'admin_inbox' && <AdminInbox profile={profile} />}
                 {activeTab === 'shifts' && <ShiftManagement />}
                 {activeTab === 'locations' && <LocationManagement />}
                 {activeTab === 'tracking' && <LiveTracking />}
