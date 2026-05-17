@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Check, X, Clock, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -16,7 +16,7 @@ export function AdminSubmissions({ profile }: { profile: any }) {
     return () => unsubscribe();
   }, []);
 
-  const handleAction = async (id: string, status: 'APPROVED' | 'REJECTED') => {
+  const handleAction = async (sub: any, status: 'APPROVED' | 'REJECTED') => {
     if (profile.role !== 'SuperMaster' && status === 'APPROVED') {
       alert("Hanya Super Master yang memiliki wewenang untuk menyetujui secara mutlak.");
       return;
@@ -24,11 +24,23 @@ export function AdminSubmissions({ profile }: { profile: any }) {
 
     if (confirm(`Apakah Anda yakin ingin memberikan status ${status} pada pengajuan ini?`)) {
       try {
-        await updateDoc(doc(db, 'submissions', id), {
+        await updateDoc(doc(db, 'submissions', sub.id), {
           status: status,
           processedBy: profile.name,
           processedAt: new Date()
         });
+
+        if (status === 'APPROVED' && (sub.type === 'SAKIT' || sub.type === 'CUTI' || sub.type === 'KELUAR_KANTOR')) {
+          await addDoc(collection(db, 'inbox'), {
+            userId: sub.userId,
+            type: 'WARNING',
+            title: '⚠️ Peringatan Berkas Fisik',
+            message: `Pengajuan ${sub.title} Anda telah disetujui. WAJIB menyerahkan/mengupload surat bukti fisik/asli paling lambat 2 HARI setelah tanggal izin berakhir ke bagian HRD. Jika tidak, izin akan dibatalkan dan dianggap Alpa.`,
+            senderId: 'Sistem HRD PUD Pasar',
+            timestamp: serverTimestamp(),
+            isRead: false
+          });
+        }
       } catch (error) {
         console.error(error);
         alert("Gagal memproses pengajuan.");
@@ -107,13 +119,13 @@ export function AdminSubmissions({ profile }: { profile: any }) {
               {sub.status === 'PENDING' && (
                 <div className="flex items-center gap-2 w-full md:w-auto mt-4 md:mt-0 border-t md:border-t-0 border-slate-100 pt-4 md:pt-0">
                   <button 
-                    onClick={() => handleAction(sub.id, 'APPROVED')}
+                    onClick={() => handleAction(sub, 'APPROVED')}
                     className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white rounded-xl font-bold text-sm transition-all"
                   >
                     <Check className="w-4 h-4" /> Setujui
                   </button>
                   <button 
-                    onClick={() => handleAction(sub.id, 'REJECTED')}
+                    onClick={() => handleAction(sub, 'REJECTED')}
                     className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 hover:bg-red-500 hover:text-white rounded-xl font-bold text-sm transition-all"
                   >
                     <X className="w-4 h-4" /> Tolak
