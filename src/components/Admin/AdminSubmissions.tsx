@@ -30,7 +30,7 @@ export function AdminSubmissions({ profile }: { profile: any }) {
           processedAt: new Date()
         });
 
-        if (status === 'APPROVED' && (sub.type === 'SAKIT' || sub.type === 'CUTI' || sub.type === 'KELUAR_KANTOR')) {
+        if (status === 'APPROVED' && (sub.type === 'SAKIT' || sub.type === 'CUTI')) {
           await addDoc(collection(db, 'inbox'), {
             userId: sub.userId,
             type: 'WARNING',

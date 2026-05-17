@@ -167,11 +167,13 @@ export default function SubmissionsScreen() {
               onChangeText={setKeterangan}
             />
 
-            <View style={styles.uploadBox}>
-              <UploadCloud color="#94a3b8" size={32} />
-              <Text style={styles.uploadText}>Upload Dokumen (Opsional)</Text>
-              <Text style={styles.uploadSubtext}>Misal: Surat Dokter (Batas 2MB)</Text>
-            </View>
+            {(!selectedType || selectedType.id !== 'KELUAR_KANTOR') && (
+              <View style={styles.uploadBox}>
+                <UploadCloud color="#94a3b8" size={32} />
+                <Text style={styles.uploadText}>Upload Dokumen (Opsional)</Text>
+                <Text style={styles.uploadSubtext}>Misal: Surat Dokter (Batas 2MB)</Text>
+              </View>
+            )}
 
             <TouchableOpacity 
               style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
