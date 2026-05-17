@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { LogOut, User as UserIcon, Briefcase, FileText, Heart, MapPin, Calendar } from 'lucide-react-native';
-import { auth, db } from '../../lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image } from 'react-native';
+import { LogOut, User as UserIcon, Briefcase, FileText, Heart, MapPin, Calendar, Camera } from 'lucide-react-native';
+import { auth, db, storage } from '../../lib/firebase';
+import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 
 export default function ProfileScreen() {
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -26,6 +30,51 @@ export default function ProfileScreen() {
     };
     fetchUserData();
   }, []);
+
+  const handlePickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled && result.assets[0].uri) {
+        uploadImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      Alert.alert("Error", "Gagal membuka galeri.");
+    }
+  };
+
+  const uploadImage = async (uri: string) => {
+    if (!auth.currentUser) return;
+    setUploadingImage(true);
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      
+      const fileRef = ref(storage, `profiles/${auth.currentUser.uid}.jpg`);
+      await uploadBytes(fileRef, blob);
+      
+      const downloadURL = await getDownloadURL(fileRef);
+      
+      await updateProfile(auth.currentUser, { photoURL: downloadURL });
+      
+      if (userData?.id) {
+        await updateDoc(doc(db, 'users', userData.id), { photoURL: downloadURL });
+      }
+      
+      setUserData({ ...userData, photoURL: downloadURL });
+      Alert.alert("Sukses", "Foto profil berhasil diperbarui!");
+    } catch (error: any) {
+      console.error(error);
+      Alert.alert("Gagal", "Terjadi kesalahan saat mengunggah foto.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const handleLogout = async () => {
     Alert.alert('Keluar', 'Apakah Anda yakin ingin keluar dari aplikasi?', [
@@ -59,7 +108,32 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profil & Data Kepegawaian</Text>
+        <View style={styles.profileImageContainer}>
+          {userData?.photoURL || auth.currentUser?.photoURL ? (
+            <Image 
+              source={{ uri: userData?.photoURL || auth.currentUser?.photoURL || '' }} 
+              style={styles.profileImage} 
+            />
+          ) : (
+            <View style={styles.profileImagePlaceholder}>
+              <UserIcon color="#94a3b8" size={40} />
+            </View>
+          )}
+          
+          <TouchableOpacity 
+            style={styles.editImageBtn} 
+            onPress={handlePickImage}
+            disabled={uploadingImage}
+          >
+            {uploadingImage ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Camera color="#fff" size={16} />
+            )}
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.headerTitle}>{userData?.name || auth.currentUser?.displayName || 'Karyawan'}</Text>
+        <Text style={styles.headerSubtitle}>{userData?.nipp || userData?.jabatan || 'PUD Pasar Kota Medan'}</Text>
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -148,8 +222,13 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f1f5f9' },
-  header: { padding: 24, paddingTop: 60, backgroundColor: '#2563eb' },
+  header: { padding: 24, paddingTop: 60, backgroundColor: '#2563eb', alignItems: 'center' },
+  profileImageContainer: { position: 'relative', marginBottom: 16 },
+  profileImage: { width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: '#fff' },
+  profileImagePlaceholder: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#f1f5f9', borderWidth: 3, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  editImageBtn: { position: 'absolute', right: 0, bottom: 0, backgroundColor: '#10b981', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
   headerTitle: { fontSize: 22, fontWeight: '900', color: '#fff' },
+  headerSubtitle: { fontSize: 14, fontWeight: '500', color: '#bfdbfe', marginTop: 4 },
   scrollContent: { padding: 16 },
   card: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 16, elevation: 1, overflow: 'hidden' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
