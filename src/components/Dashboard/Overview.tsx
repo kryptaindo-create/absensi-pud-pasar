@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
-import { CheckCircle2, AlertCircle, Clock, MapPin, User, Calendar, CreditCard, Heart, Briefcase, GraduationCap, ShieldAlert, FileText, Info, TrendingUp, UserMinus, FileClock } from 'lucide-react';
+import { CheckCircle, AlertCircle, Clock, MapPin, User, Calendar, CreditCard, Heart, Briefcase, GraduationCap, ShieldAlert, FileText, Info, BarChart2, AlertTriangle, FileText as FileClockIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { db } from '../../lib/firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
@@ -41,8 +41,10 @@ export function Overview({ profile }: { profile: any }) {
     endPeriod = new Date(now.getFullYear(), now.getMonth(), 15, 23, 59, 59);
   }
 
-  const isWithinPeriod = (dateString: string) => {
+  const isWithinPeriod = (dateString: string | undefined | null) => {
+    if (!dateString) return false;
     const d = new Date(dateString);
+    if (isNaN(d.getTime())) return false;
     return d >= startPeriod && d <= endPeriod;
   };
 
@@ -72,11 +74,18 @@ export function Overview({ profile }: { profile: any }) {
   });
 
   // Monthly Submissions (Izin / Cuti)
-  // Assuming submission timestamp or startDate is within period
-  const monthlySubs = submissions.filter(s => s.status === 'APPROVED' && (
-    (s.startDate && isWithinPeriod(s.startDate)) || 
-    (s.timestamp?.toDate && isWithinPeriod(s.timestamp.toDate().toISOString()))
-  ));
+  const monthlySubs = submissions.filter(s => {
+    if (s.status !== 'APPROVED') return false;
+    if (s.startDate && isWithinPeriod(s.startDate)) return true;
+    if (s.timestamp && typeof s.timestamp.toDate === 'function') {
+      try {
+        return isWithinPeriod(s.timestamp.toDate().toISOString());
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  });
 
   const totalIzinSakitBulanIni = monthlySubs.filter(s => s.type === 'SAKIT' || s.type === 'IZIN').length;
   const totalCutiBulanIni = monthlySubs.filter(s => s.type === 'CUTI').length;
@@ -154,7 +163,7 @@ export function Overview({ profile }: { profile: any }) {
         </div>
         <div className="theme-card bg-white p-5 border-slate-100 shadow-sm flex flex-col justify-center items-center text-center">
           <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center mb-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            <CheckCircle className="w-5 h-5 text-emerald-600" />
           </div>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Hadir (Bulan Ini)</p>
           <h4 className="text-2xl font-black text-slate-800">{totalMasukBulanIni} <span className="text-xs text-slate-500 font-bold">Hari</span></h4>
@@ -174,7 +183,7 @@ export function Overview({ profile }: { profile: any }) {
 
         <div className="theme-card bg-white p-4 border-slate-100 shadow-sm relative overflow-hidden">
           <div className="relative z-10">
-            <UserMinus className="w-4 h-4 text-red-500 mb-2" />
+            <AlertTriangle className="w-4 h-4 text-red-500 mb-2" />
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight h-6">Lupa Pulang</p>
             <h4 className="text-xl font-black text-slate-800 mt-1">{lupaPulangBulanIni} <span className="text-[10px] font-bold text-slate-400">Kali</span></h4>
           </div>
@@ -183,7 +192,7 @@ export function Overview({ profile }: { profile: any }) {
 
         <div className="theme-card bg-white p-4 border-slate-100 shadow-sm relative overflow-hidden">
           <div className="relative z-10">
-            <FileClock className="w-4 h-4 text-blue-500 mb-2" />
+            <FileClockIcon className="w-4 h-4 text-blue-500 mb-2" />
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight h-6">Izin/Sakit</p>
             <h4 className="text-xl font-black text-slate-800 mt-1">{totalIzinSakitBulanIni} <span className="text-[10px] font-bold text-slate-400">Hari</span></h4>
           </div>
@@ -212,7 +221,7 @@ export function Overview({ profile }: { profile: any }) {
       {/* Chart Section */}
       <div className="theme-card bg-white p-6 border-slate-100 shadow-sm mt-6">
         <div className="flex items-center gap-2 mb-6">
-          <TrendingUp className="w-5 h-5 text-blue-600" />
+          <BarChart2 className="w-5 h-5 text-blue-600" />
           <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Grafik Performa Bulan Ini</h3>
         </div>
         
