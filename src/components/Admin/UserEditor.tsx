@@ -318,6 +318,24 @@ export function UserEditor({ user, onClose }: UserEditorProps) {
                  />
                </div>
                <div className="space-y-2">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No. SK Pengangkatan</label>
+                 <input 
+                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-4 text-xs font-semibold"
+                   value={formData.nomorSk || ''}
+                   onChange={(e) => setFormData({...formData, nomorSk: e.target.value})}
+                   placeholder="Contoh: 123/SK/2026"
+                 />
+               </div>
+               <div className="space-y-2">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tgl SK Pengangkatan</label>
+                 <input 
+                   type="date"
+                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-4 text-xs font-semibold"
+                   value={formData.tanggalSk || ''}
+                   onChange={(e) => setFormData({...formData, tanggalSk: e.target.value})}
+                 />
+               </div>
+               <div className="space-y-2">
                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sisa Cuti</label>
                  <input 
                    type="number"
