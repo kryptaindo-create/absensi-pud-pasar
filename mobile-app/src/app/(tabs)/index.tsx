@@ -36,6 +36,7 @@ export default function DashboardScreen() {
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [userData, setUserData] = useState<any>(null);
   const [locationsData, setLocationsData] = useState<any[]>([]);
+  const [shiftsData, setShiftsData] = useState<any[]>([]);
 
   const cameraRef = useRef<any>(null);
 
@@ -78,11 +79,12 @@ export default function DashboardScreen() {
       const unsubLocs = onSnapshot(collection(db, 'locations'), (snap) => {
         const locs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         setLocationsData(locs);
-        
-        // Setup hardware AFTER locations are fetched (or just run it once)
-        // Note: we can run setupHardware right away, but it's better to pass locs or use a ref.
-        // For simplicity, we'll run setupHardware here with the fetched locations
         setupHardware(locs);
+      });
+
+      // Fetch Shifts
+      const unsubShifts = onSnapshot(collection(db, 'shifts'), (snap) => {
+        setShiftsData(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
 
       return () => {
@@ -90,6 +92,7 @@ export default function DashboardScreen() {
         unsubAtt();
         unsubSub();
         unsubLocs();
+        unsubShifts();
       };
     } else {
       return () => {
@@ -176,9 +179,26 @@ export default function DashboardScreen() {
       const now = new Date();
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
       
-      // Default telat jika lewat 08:15
-      if (currentMinutes > (8 * 60 + 15)) {
-        finalStatus = 'LATE';
+      // Dynamic Shift Logic
+      if (userData?.shiftId) {
+        const myShift = shiftsData.find(s => s.id === userData.shiftId);
+        if (myShift && myShift.startTime) {
+          const [startHour, startMin] = myShift.startTime.split(':').map(Number);
+          const tolerance = parseInt(myShift.lateTolerance || '15');
+          const allowedMinutes = (startHour * 60) + startMin + tolerance;
+          
+          if (currentMinutes > allowedMinutes) {
+            finalStatus = 'LATE';
+          }
+        } else {
+          // Fallback if shift not found
+          if (currentMinutes > (8 * 60 + 15)) finalStatus = 'LATE';
+        }
+      } else {
+        // Default telat jika tidak ada shift (lewat 08:15)
+        if (currentMinutes > (8 * 60 + 15)) {
+          finalStatus = 'LATE';
+        }
       }
 
       const payload = {
